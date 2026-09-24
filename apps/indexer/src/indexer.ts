@@ -20,7 +20,7 @@ export class PactIndexer {
   constructor(readonly database: Database, readonly rpc: PublicClient,
     readonly chainId: number, readonly addresses: readonly Address[],
     readonly startBlock: bigint, readonly finalityBlocks: number,
-    readonly batchSize = 100n) {}
+    readonly batchSize = 20n) {}
 
   async tick(): Promise<bigint | null> {
     const latest = await this.rpc.getBlockNumber();
@@ -38,11 +38,16 @@ export class PactIndexer {
     const from = next.rows[0] ? BigInt(next.rows[0].block_number) + 1n : this.startBlock;
     if (from > safeHead) return null;
     const to = from + this.batchSize - 1n < safeHead ? from + this.batchSize - 1n : safeHead;
-    const [logs, blocks] = await Promise.all([
-      this.rpc.getLogs({ address: [...this.addresses], fromBlock: from, toBlock: to }),
-      Promise.all(Array.from({ length: Number(to - from + 1n) }, (_, offset) =>
-        this.rpc.getBlock({ blockNumber: from + BigInt(offset) }))),
-    ]);
+    const logs = await this.rpc.getLogs({ address: [...this.addresses],
+      fromBlock: from, toBlock: to });
+    const blocks = [];
+    // Public RPCs commonly reject bursts of dozens of concurrent block requests.
+    // Keep each burst small while preserving ordered, reorg-checkable headers.
+    for (let offset = 0; offset < Number(to - from + 1n); offset += 5) {
+      const count = Math.min(5, Number(to - from + 1n) - offset);
+      blocks.push(...await Promise.all(Array.from({ length: count }, (_, index) =>
+        this.rpc.getBlock({ blockNumber: from + BigInt(offset + index) }))));
+    }
     const client = await this.database.connect();
     try {
       await client.query('BEGIN');

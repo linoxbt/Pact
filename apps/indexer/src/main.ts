@@ -19,7 +19,10 @@ for (const signal of ['SIGINT', 'SIGTERM'] as const) process.once(signal, () => 
 while (running) {
   try { await indexer.tick(); await writeHeartbeat(database, 'indexer', instanceId, true); }
   catch (error) {
-    console.error('Indexer tick failed', error instanceof Error ? error.name : 'UNKNOWN');
+    const rpcStatus = error && typeof error === 'object' && 'status' in error ?
+      String(error.status) : 'unknown';
+    console.error('Indexer tick failed', error instanceof Error ? error.name : 'UNKNOWN',
+      `rpcStatus=${rpcStatus}`);
     try { await writeHeartbeat(database, 'indexer', instanceId, false, 'TICK_FAILED'); }
     catch { console.error('Indexer heartbeat unavailable'); }
   }
