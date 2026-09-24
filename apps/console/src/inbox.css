@@ -1,0 +1,6 @@
+.operations>.approvalItem{display:block;padding:20px 0;overflow-wrap:anywhere}
+.approvalItem>code{display:block;margin:8px 0 14px;color:#a6c4b1}
+.approvalItem dl{grid-template-columns:130px 1fr;gap:9px}
+.approvalItem .actions{display:flex;gap:12px;margin-top:20px;flex-wrap:wrap}
+.approvalItem dd{overflow-wrap:anywhere}
+pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#10211a;border-radius:8px;padding:14px;color:#d4e6d8}

@@ -1,0 +1,29 @@
+{
+  "name": "@pact/api",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "check": "tsc -p tsconfig.json --noEmit",
+    "start": "node dist/main.js",
+    "test": "pnpm build && node --test test/*.test.mjs"
+  },
+  "dependencies": {
+    "@fastify/cors": "11.3.0",
+    "@fastify/helmet": "13.1.1",
+    "@pact/abis": "workspace:*",
+    "@pact/operations": "workspace:*",
+    "@pact/policies": "workspace:*",
+    "@pact/proofs": "workspace:*",
+    "@pact/schemas": "workspace:*",
+    "@pact/sdk-ts": "workspace:*",
+    "@pact/security": "workspace:*",
+    "@aws-sdk/client-kms": "3.1110.0",
+    "@aws-sdk/client-s3": "3.1110.0",
+    "fastify": "5.12.5",
+    "viem": "^2.37.6",
+    "zod": "4.6.5"
+  },
+  "devDependencies": { "@types/node": "^22.0.0", "typescript": "^5.9.3" }
+}

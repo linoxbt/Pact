@@ -1,0 +1,24 @@
+{
+  "name": "@pact/gateway",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "check": "tsc -p tsconfig.json --noEmit",
+    "start": "node dist/main.js",
+    "test": "pnpm build && node --test test/*.test.mjs"
+  },
+  "dependencies": {
+    "@aws-sdk/client-secrets-manager": "3.1110.0",
+    "@aws-sdk/client-kms": "3.1110.0",
+    "@fastify/helmet": "13.1.1",
+    "@pact/operations": "workspace:*",
+    "@pact/policies": "workspace:*",
+    "@pact/security": "workspace:*",
+    "@pact/sdk-ts": "workspace:*",
+    "fastify": "5.12.5",
+    "viem": "^2.37.6"
+  },
+  "devDependencies": { "@types/node": "^22.0.0", "typescript": "^5.9.3" }
+}

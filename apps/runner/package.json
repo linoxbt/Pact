@@ -1,0 +1,9 @@
+{
+  "name": "@pact/runner", "version": "0.1.0", "private": true, "type": "module",
+  "scripts": { "build": "tsc -p tsconfig.json", "check": "tsc -p tsconfig.json --noEmit",
+    "start": "node dist/main.js", "test": "pnpm build && node --test test/*.test.mjs" },
+  "dependencies": { "@pact/operations": "workspace:*", "@pact/security": "workspace:*",
+    "@pact/sdk-ts": "workspace:*", "@aws-sdk/client-kms": "3.1110.0",
+    "@aws-sdk/client-secrets-manager": "3.1110.0", "viem": "^2.37.6" },
+  "devDependencies": { "@types/node": "^22.0.0", "typescript": "^5.9.3" }
+}

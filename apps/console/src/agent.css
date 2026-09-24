@@ -1,0 +1,17 @@
+.agentWorkbench .sectionHeading{display:flex;justify-content:space-between;gap:20px;align-items:start}
+.agentWorkbench .agentList{display:grid;gap:8px}
+.agentWorkbench .agentList button{display:flex;justify-content:space-between;gap:12px;background:#203829;color:#eaf4eb;text-align:left}
+.agentWorkbench .agentList button.activeAgent{outline:2px solid #b8f2d1}
+.agentWorkbench .agentList span{color:#a8c3ad;font-size:12px}
+.agentWorkbench .actions{display:flex;flex-wrap:wrap;gap:8px}
+.agentWorkbench .scopeGrid{display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin:18px 0;border:1px solid #42644c;padding:15px}
+.agentWorkbench .scopeGrid label{display:flex;gap:8px;align-items:center;margin:0}
+.agentWorkbench .scopeGrid input{width:auto;margin:0}
+.agentWorkbench .keyReveal{display:grid;gap:10px;margin:20px 0;padding:15px;border:1px solid #92d5a0;background:#1e3e2a}
+.agentWorkbench .keyReveal code{overflow-wrap:anywhere}
+.agentWorkbench .keyReveal button{justify-self:start}
+.agentWorkbench .credentialList{margin:18px 0}
+.agentWorkbench .credentialList>div{display:flex;gap:14px;align-items:center;justify-content:space-between;border-top:1px solid #35533f;padding:10px 0;font-size:12px;overflow-wrap:anywhere}
+.agentWorkbench .credentialList span{flex:1}
+.agentWorkbench textarea{resize:vertical}
+@media(max-width:700px){.agentWorkbench .scopeGrid{grid-template-columns:1fr}.agentWorkbench .agentList button{display:grid}.agentWorkbench .credentialList>div{flex-wrap:wrap}}

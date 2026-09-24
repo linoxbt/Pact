@@ -1,0 +1,10 @@
+.git
+**/node_modules
+**/dist
+**/out
+**/cache
+**/broadcast
+**/__pycache__
+*.pdf
+.env
+*.log

@@ -1,0 +1,24 @@
+{
+  "name": "@pact/operations",
+  "version": "0.1.0",
+  "type": "module",
+  "exports": { ".": "./dist/index.js" },
+  "types": "./dist/index.d.ts",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "check": "tsc -p tsconfig.json --noEmit",
+    "test": "pnpm build && node --test test/*.test.mjs"
+  },
+  "dependencies": {
+    "@pact/abis": "workspace:*",
+    "@pact/sdk-ts": "workspace:*",
+    "pg": "8.23.0",
+    "viem": "^2.37.6",
+    "zod": "4.6.5"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "@types/pg": "^8.15.0",
+    "typescript": "^5.9.3"
+  }
+}

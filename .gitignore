@@ -1,0 +1,12 @@
+node_modules/
+dist/
+out/
+cache/
+broadcast/
+coverage/
+.env
+.secrets/
+.netlify/
+*.log
+__pycache__/
+*.pyc
