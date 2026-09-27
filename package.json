@@ -12,6 +12,7 @@
   },
   "devDependencies": {
     "typescript": "^5.9.3",
-    "viem": "^2.37.6"
+    "viem": "^2.37.6",
+    "wrangler": "^4.141.0"
   }
 }

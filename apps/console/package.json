@@ -5,8 +5,9 @@
   "type": "module",
   "scripts": {
     "dev": "vite --host 0.0.0.0",
-    "build": "tsc -p tsconfig.json && vite build",
-    "check": "tsc -p tsconfig.json --noEmit"
+    "build": "tsc -p tsconfig.json && vite build --emptyOutDir",
+    "check": "tsc -p tsconfig.json --noEmit",
+    "deploy:cloudflare": "pnpm build && wrangler deploy"
   },
   "dependencies": {
     "@pact/abis": "workspace:*",
