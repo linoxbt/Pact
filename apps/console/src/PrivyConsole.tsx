@@ -22,5 +22,5 @@ export default function PrivyConsole() {
   if (!appId) return <App/>;
   return <PrivyProvider appId={appId} config={{ loginMethods: ['wallet'],
     supportedChains: [monadTestnet], defaultChain: monadTestnet,
-    appearance: { theme: 'dark', accentColor: '#b8f2d1' } }}><WalletConsole/></PrivyProvider>;
+    appearance: { theme: 'light', accentColor: '#245342' } }}><WalletConsole/></PrivyProvider>;
 }

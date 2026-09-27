@@ -1,89 +1,73 @@
-import { lazy, Suspense, useState } from 'react';
+import { lazy, Suspense, useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { request } from './api.js';
+import { Brand, CodeBlock, Icon } from './ui.js';
+import { DocsContent } from './Docs.js';
 import './site.css';
 import './agent.css';
 
 const apiUrl = import.meta.env.VITE_PACT_API_URL as string | undefined;
 const ConsoleApp = lazy(() => import('./PrivyConsole.js'));
-const nav = [{ href: '/', label: 'Protocol' }, { href: '/docs', label: 'Docs' },
-  { href: '/explorer', label: 'Explorer' }];
-function Brand() { return <a className="brand" href="/" aria-label="Pact home"><span className="brandMark"><span/></span>PACT<span className="brandDot">.</span></a>; }
+const nav = [{ href: '/', label: 'Protocol' }, { href: '/docs', label: 'Developers' }, { href: '/explorer', label: 'Explorer' }];
 function Shell({ children, active }: { children: React.ReactNode; active: string }) {
-  return <div className="siteShell"><div className="topline"><span>PROGRAMMABLE AUTHORITY FOR AUTONOMOUS AGENTS</span><span>LIVE ON MONAD TESTNET</span></div>
-    <nav className="siteNav" aria-label="Primary"><Brand/><div className="navLinks">{nav.map(item =>
-      <a key={item.href} className={active === item.href ? 'isActive' : ''} href={item.href}>{item.label}</a>)}</div>
-      <a className="navCta" href="/app">Open Console <span aria-hidden="true">↗</span></a></nav>{children}
-    <footer className="siteFooter"><div><Brand/><p>Authority, obligations, and economic receipts for agents acting in the world.</p></div>
-      <div><a href="/docs">Documentation</a><a href="/explorer">Explorer</a><a href="/app">Console</a></div>
-      <small>Monad testnet infrastructure. Test tokens only.</small></footer></div>;
+  const [open, setOpen] = useState(false);
+  useEffect(() => {
+    const observer = new IntersectionObserver(entries => entries.forEach(entry => {
+      if (entry.isIntersecting) { entry.target.classList.add('revealed'); observer.unobserve(entry.target); }
+    }), { threshold: 0.08 });
+    document.querySelectorAll('[data-reveal]').forEach(item => observer.observe(item));
+    return () => observer.disconnect();
+  }, []);
+  return <div className="siteShell"><a href="#main-content" className="skipLink">Skip to content</a>
+    <div className="announcement"><span className="statusDot"/> Pact is live on Monad testnet <a href="/docs#quickstart">Start building <Icon name="arrow" size={13}/></a></div>
+    <nav className="siteNav" aria-label="Primary"><Brand/><div className={`navLinks ${open ? 'navOpen' : ''}`}>{nav.map(item => <a key={item.href} aria-current={active === item.href ? 'page' : undefined} href={item.href}>{item.label}</a>)}<a href="https://github.com/linoxbt/Pact">GitHub <Icon name="external" size={13}/></a></div><a className="navCta" href="/app">Launch app <Icon name="external" size={16}/></a><button className="mobileMenu" onClick={() => setOpen(!open)} aria-expanded={open} aria-label={open ? 'Close navigation' : 'Open navigation'}><Icon name={open ? 'close' : 'menu'}/></button></nav>
+    {children}
+    <footer className="siteFooter"><div className="footerTop"><div><Brand/><p>Built for agents.<br/>Accountable to you.</p></div><div className="footerLinks"><div><span>PRODUCT</span><a href="/app">Console</a><a href="/explorer">Explorer</a><a href="/#architecture">Architecture</a></div><div><span>DEVELOPERS</span><a href="/docs#quickstart">Quickstart</a><a href="/docs#sdk">SDKs & integrations</a><a href="https://github.com/linoxbt/Pact">GitHub ↗</a></div><div><span>NETWORK</span><a href="/docs#network">Monad testnet</a><a href="/docs#authority">Authority model</a><a href="/docs#evidence">Trust & verification</a></div></div></div><div className="footerBottom"><span>© {new Date().getFullYear()} Pact Protocol</span><span><i className="statusDot"/> Monad testnet · Test tokens only</span><span>Permission with a paper trail.</span></div></footer>
+  </div>;
 }
 function AuthorityGraphic() {
-  return <div className="authorityGraphic" aria-label="Principal authority flows through a bounded grant to an agent and a verified economic receipt" role="img">
-    <div className="graphicHead"><span>AUTHORITY GRAPH</span><span className="livePill"><i/> LIVE MODEL</span></div>
-    <svg viewBox="0 0 640 420" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-      <defs><pattern id="dots" width="24" height="24" patternUnits="userSpaceOnUse"><circle cx="1" cy="1" r="1" fill="#315047"/></pattern></defs>
-      <rect width="640" height="420" fill="url(#dots)"/>
-      <path className="flowLine" d="M128 210H260M380 210H512" fill="none" stroke="#9CE8BE" strokeWidth="2" strokeDasharray="7 8"/>
-      <path d="M320 128V82M320 292V338" fill="none" stroke="#526B60" strokeWidth="2" strokeDasharray="5 7"/>
-      <circle cx="320" cy="210" r="76" fill="#19352B" stroke="#98E7BB" strokeWidth="1.5"/>
-      <circle className="graphicPulse" cx="320" cy="210" r="95" fill="none" stroke="#98E7BB" opacity=".25"/>
-      <circle cx="100" cy="210" r="52" fill="#16251F" stroke="#526B60"/>
-      <circle cx="540" cy="210" r="52" fill="#16251F" stroke="#526B60"/>
-      <rect x="270" y="33" width="100" height="48" rx="5" fill="#172A22" stroke="#526B60"/>
-      <rect x="270" y="338" width="100" height="48" rx="5" fill="#172A22" stroke="#526B60"/>
-      <text x="100" y="206" textAnchor="middle" fill="#F1F8F1" fontSize="11" fontWeight="700">PRINCIPAL</text>
-      <text x="100" y="225" textAnchor="middle" fill="#A3B8A8" fontSize="10">signs scope</text>
-      <text x="320" y="204" textAnchor="middle" fill="#B8F2D1" fontSize="13" fontWeight="700">PACT GRANT</text>
-      <text x="320" y="227" textAnchor="middle" fill="#BBD1BE" fontSize="10">policy · capacity · expiry</text>
-      <text x="540" y="206" textAnchor="middle" fill="#F1F8F1" fontSize="11" fontWeight="700">AGENT</text>
-      <text x="540" y="225" textAnchor="middle" fill="#A3B8A8" fontSize="10">acts in bounds</text>
-      <text x="320" y="62" textAnchor="middle" fill="#BBD1BE" fontSize="10">RESERVATION</text>
-      <text x="320" y="367" textAnchor="middle" fill="#BBD1BE" fontSize="10">RECEIPT</text>
-      <circle className="flowDot" cx="128" cy="210" r="5" fill="#B8F2D1"/>
-    </svg><div className="graphicFoot"><span>01 / IDENTITY</span><span>02 / BOUNDED ACTION</span><span>03 / VERIFIABLE OUTCOME</span></div></div>;
+  return <div className="authorityGraphic" role="img" aria-label="An illustrated authority flow: a principal defines a grant, an agent acts within it, and Pact records a receipt.">
+    <div className="graphGrid"/><div className="graphTop"><span><i className="statusDot"/> AUTHORITY NETWORK</span><span>ILLUSTRATION / 001</span></div>
+    <svg className="authoritySvg" viewBox="0 0 620 520" fill="none" aria-hidden="true">
+      <defs><linearGradient id="prism" x1="190" y1="140" x2="420" y2="390" gradientUnits="userSpaceOnUse"><stop stopColor="#b5f8d2"/><stop offset="1" stopColor="#3b8a70" stopOpacity=".08"/></linearGradient><radialGradient id="halo"><stop stopColor="#85e6b1" stopOpacity=".22"/><stop offset="1" stopColor="#85e6b1" stopOpacity="0"/></radialGradient></defs>
+      <circle cx="310" cy="260" r="245" fill="url(#halo)"/>
+      <g className="orbitRing"><ellipse cx="310" cy="260" rx="255" ry="117" transform="rotate(-30 310 260)" stroke="#76aa94" strokeOpacity=".35"/><ellipse cx="310" cy="260" rx="255" ry="117" transform="rotate(30 310 260)" stroke="#76aa94" strokeOpacity=".25"/></g>
+      <path className="signalPath" d="M80 167 310 260 540 351M80 350 310 260 540 167" stroke="#a9f5cb" strokeWidth="1.2" strokeDasharray="4 12"/>
+      <g className="prismFloat"><path d="m310 137 112 64v128l-112 64-112-64V201l112-64Z" fill="url(#prism)" fillOpacity=".4" stroke="#b6f4d2"/><path d="m198 201 112 64 112-64M310 265v128m0-256v128m-112 64 112-64 112 64" stroke="#c9ffe2" strokeOpacity=".7"/><path d="m310 177 77 44v88l-77 44-77-44v-88l77-44Z" stroke="#c9ffe2" strokeOpacity=".4"/><path d="m310 223 37 21v42l-37 21-37-21v-42l37-21Z" fill="#b5f8d2"/><path d="m292 262 12 12 26-28" stroke="#153b2f" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"/></g>
+      {[[80,167],[540,351],[80,350],[540,167]].map(([x,y],i)=><g key={i}><circle cx={x} cy={y} r="7" fill="#15382b" stroke="#b6f4d2"/><circle className="nodePulse" style={{animationDelay:`${i*.6}s`}} cx={x} cy={y} r="14" stroke="#b6f4d2" strokeOpacity=".3"/></g>)}
+    </svg>
+    <div className="graphCard principalCard"><span className="graphIcon"><Icon name="wallet" size={17}/></span><div><small>PRINCIPAL</small><strong>Your authority.</strong></div><Icon name="check" size={15}/></div>
+    <div className="graphCard agentCard"><span className="graphIcon"><Icon name="agent" size={17}/></span><div><small>AUTONOMOUS AGENT</small><strong>Bound by your rules.</strong></div></div>
+    <div className="graphReceipt"><span><Icon name="receipt" size={15}/> Economic receipt</span><div><span>Authorization → Settlement</span><Icon name="check" size={15}/></div></div>
+    <div className="graphBottom"><span>EXPLICIT SCOPE</span><span>VERIFIABLE OUTCOME <span>↗</span></span></div>
+  </div>;
 }
+const stages = [
+  { icon:'shield', title:'Define the boundaries.', body:'Give each agent an explicit scope: what it can spend, who it can pay, and when its authority expires.', code:'grant.scope', value:'Bounded by the principal', detail:'Token · recipient · ceiling · expiry' },
+  { icon:'layers', title:'Check before execution.', body:'Evaluate an exact intent and reserve its maximum liability before the agent acts.', code:'intent.reservation', value:'Capacity reserved', detail:'Identity · policy · available capacity' },
+  { icon:'inbox', title:'Keep a human in the loop.', body:'Route transfers above your threshold to an approval inbox. Sign the exact terms from your wallet.', code:'approval.signature', value:'Explicit consent', detail:'Amount · recipient · nonce · deadline' },
+  { icon:'receipt', title:'Close the loop with proof.', body:'Connect authority, obligations, evidence, and settlement in a verifiable economic receipt.', code:'receipt.anchor', value:'An outcome you can inspect', detail:'Evidence hash · verdict · settlement' },
+];
 function Landing() {
   const [step, setStep] = useState(0);
-  const stages = [
-    { n: '01', title: 'Define authority', body: 'The principal binds an agent to a grant: asset, recipient, ceiling, expiry, and policy hash.' },
-    { n: '02', title: 'Reserve capacity', body: 'Pact checks an exact action and reserves its maximum liability before execution.' },
-    { n: '03', title: 'Approve exceptions', body: 'A human signs the precise request. Changed terms require a fresh approval.' },
-    { n: '04', title: 'Prove the outcome', body: 'An obligation, evidence hash, verifier verdict, and settlement are linked in a receipt.' },
-  ];
-  return <Shell active="/"><main className="landing"><section className="hero"><div className="heroCopy"><div className="eyebrow"><span className="signal"/> THE AUTHORITY LAYER</div>
-    <h1>Give agents power.<br/><em>Keep authority.</em></h1>
-    <p className="heroLead">Pact lets autonomous agents act within explicit limits, proves who authorized them, tracks the obligations they create, and records what actually settled.</p>
-    <div className="heroActions"><a className="primaryLink" href="/app">Explore the Console <span>↗</span></a><a className="quietLink" href="/docs">Read the developer docs <span>→</span></a></div>
-    <div className="heroMeta"><span><strong>06</strong> protocol layers</span><span><strong>01</strong> source of authority</span><span><strong>∞</strong> accountable actions</span></div>
-    </div><AuthorityGraphic/></section>
-    <section className="thesis"><span className="eyebrow">THE PROBLEM</span><p>Agents are gaining access to wallets, APIs, and business workflows. A wallet key or API token gives an agent power without showing a counterparty <em>who allowed this action, under what limits, and what happened next.</em></p></section>
-    <section className="systemSection"><div className="sectionIntro"><span className="eyebrow">HOW PACT WORKS</span><h2>One line of accountability.<br/>From intent to receipt.</h2><p>Authority is checked at the execution boundary. A policy preview alone cannot move controlled funds or reveal a vaulted credential.</p></div>
-      <div className="stepPanel"><div className="stepList">{stages.map((item, index) => <button key={item.n} className={step === index ? 'selectedStep' : ''} onClick={() => setStep(index)}><span>{item.n}</span><strong>{item.title}</strong><span aria-hidden="true">↗</span></button>)}</div><div className="stepDetail"><span>PACT / {stages[step]!.n}</span><div className="stepOrbit"><span>{stages[step]!.n}</span></div><h3>{stages[step]!.title}</h3><p>{stages[step]!.body}</p></div></div></section>
-    <section className="products"><div><span className="eyebrow">BUILT FOR THE WHOLE TRANSACTION</span><h2>One protocol.<br/>Six product surfaces.</h2></div><div className="productGrid">{[
-      ['Protocol','Monad contracts and enforceable limits'],['Engine','Quotes, decisions, and reservations'],
-      ['SDK','Typed tools for agent developers'],['MCP','Scoped tools for AI runtimes'],
-      ['Console','Human oversight and approvals'],['Explorer','Public proofs and receipts']
-    ].map(([title, body], index) => <article key={title}><span>0{index + 1}</span><h3>{title}</h3><p>{body}</p></article>)}</div></section>
-    <section className="closing"><span className="eyebrow">START WITH A BOUNDARY</span><h2>Autonomous commerce<br/><em>with someone accountable.</em></h2><p>See what is implemented on testnet, integrate through the SDK, and inspect the trust assumptions before using Pact.</p><div className="heroActions"><a className="primaryLink" href="/docs">Start building <span>↗</span></a><a className="quietLink" href="/explorer">Inspect public records <span>→</span></a></div></section>
+  const [language, setLanguage] = useState<'TypeScript'|'MCP'>('TypeScript');
+  const examples = { TypeScript: `import { PactHttpClient } from '@pact/sdk-ts';\n\nconst pact = new PactHttpClient(\n  process.env.PACT_API_URL!,\n  process.env.PACT_API_KEY!\n);\n\n// Understand your agent's actual authority.\nconst authority = await pact.myAuthority();\n\n// Inspect the result of an economic action.\nconst receipt = await pact.receipt(1n);`, MCP: `# From the Pact workspace\npnpm install --frozen-lockfile\npnpm --filter @pact/mcp build\n\n# Use a scoped agent credential\nexport PACT_API_URL="https://pact-api-production-1a80.up.railway.app"\nexport PACT_SESSION_TOKEN="YOUR_SCOPED_CREDENTIAL"\n\npnpm --filter @pact/mcp start` };
+  return <Shell active="/"><main id="main-content" className="landing">
+    <section className="hero"><div className="heroCopy"><span className="eyebrow"><span className="tinyLine"/> THE AUTHORITY LAYER FOR AGENTS</span><h1>Autonomy.<br/>With <span className="serifWord">authority.</span></h1><p className="heroLead">Let agents act. Keep the boundaries.<br/>Pact turns permissions into enforceable rules and economic actions into verifiable receipts.</p><div className="heroActions"><a className="primaryLink" href="/app">Open your workspace <Icon name="arrow" size={17}/></a><a className="quietLink" href="/docs">Explore the docs <Icon name="external" size={16}/></a></div><div className="heroProof"><span className="monadMark">◈</span><div>Built on <strong>Monad</strong><small>Shared authority. Machine-speed execution.</small></div></div></div><AuthorityGraphic/></section>
+    <div className="principlesBar"><span>THE COMPLETE CHAIN OF ACCOUNTABILITY</span><div><span><Icon name="shield"/> Explicit permissions</span><span><Icon name="layers"/> Bounded execution</span><span><Icon name="receipt"/> Verifiable outcomes</span></div></div>
+    <section className="thesis contentSection" data-reveal><div><span className="eyebrow">POWER NEEDS PERMISSION</span><h2>Your agents can do more.<br/>You should know <em>exactly what.</em></h2></div><p>As agents gain access to money, APIs, and workflows, every action needs a clear line back to the person who authorized it. Pact makes that line explicit—from the first grant to the final receipt.</p></section>
+    <section className="workflow contentSection" id="how-it-works" data-reveal><div className="sectionHeading"><div><span className="eyebrow">01 / THE TRANSACTION LIFECYCLE</span><h2>From intention<br/>to accountability.</h2></div><p>Four steps. One continuous record.<br/>Every action stays connected to its authority.</p></div><div className="workflowGrid"><div className="stepList" role="group" aria-label="Transaction lifecycle">{stages.map((item,i)=><button key={item.title} aria-pressed={step===i} aria-controls="lifecycle-detail" id={`lifecycle-tab-${i}`} className={step===i?'selectedStep':''} onClick={()=>setStep(i)}><span className="stepNumber">0{i+1}</span><div><strong>{item.title}</strong>{step===i&&<p>{item.body}</p>}</div><Icon name="arrow" size={18}/></button>)}</div><div className="stepVisual" role="region" id="lifecycle-detail" aria-labelledby={`lifecycle-tab-${step}`}><div className="visualWindow"><span className="windowLabel">PACT / EXECUTION TRACE</span><div className="visualOrbit"><span className="orbitLine"/><span className="orbitLine second"/><div className="visualCore" key={step}><Icon name={stages[step].icon} size={48}/></div><span className="orbitPoint"/></div><div className="traceCard" key={`trace-${step}`}><span><i className="statusDot"/>{stages[step].code}</span><strong>{stages[step].value}</strong><small>{stages[step].detail}</small></div><span className="illustrationLabel">Illustrated protocol flow</span></div></div></div></section>
+    <section className="architecture contentSection" id="architecture"><div className="sectionHeading" data-reveal><div><span className="eyebrow">02 / ONE CONNECTED SYSTEM</span><h2>Infrastructure for the<br/><em>agent economy.</em></h2></div><p>Six layers connect your policies to an agent’s actions. Integrate the parts you need. Preserve the same chain of authority.</p></div><div className="productGrid">{[
+      ['shield','Protocol','The foundation of authority.','Monad contracts for grants, capacity, obligations, and settlement.','authority'],
+      ['layers','Engine','Decisions before actions.','Policy evaluation, exact intent quotes, and commitment analysis.','authority'],
+      ['code','SDK','Bring your own agent.','TypeScript and Python clients for scoped integrations.','sdk'],
+      ['agent','MCP Server','Authority, in context.','Give MCP-capable agents tools to understand and use their scope.','mcp'],
+      ['grid','Console','The human control plane.','Manage agents, permissions, provider keys, and approval requests.','agents'],
+      ['globe','Explorer','Make outcomes inspectable.','Public authority disclosures and economic receipt anchors.','evidence'],
+    ].map(([icon,title,tag,body,anchor],i)=><a className="productCard" key={title} href={`/docs#${anchor}`} data-reveal><div className="productTop"><Icon name={icon} size={25}/><span>0{i+1}</span></div><h3>Pact {title}</h3><strong>{tag}</strong><p>{body}</p><span className="cardLink">Explore layer <Icon name="external" size={16}/></span></a>)}</div></section>
+    <section className="developerSection contentSection" data-reveal><div><span className="eyebrow">03 / BUILT TO BE INTEGRATED</span><h2>Your agent.<br/>Your stack.<br/><em>Explicit authority.</em></h2><p>Connect through the SDK or an MCP server. Read live authority, prepare bounded actions, and inspect the outcome.</p><div className="integrationTags"><span>TypeScript</span><span>Python</span><span>MCP</span><span>EVM</span></div><a className="quietLink" href="/docs#quickstart">Start with the quickstart <Icon name="arrow" size={17}/></a></div><div className="developerCode"><div className="codeTabs" aria-label="Integration examples">{(['TypeScript','MCP'] as const).map(item=><button key={item} aria-pressed={language===item} className={language===item?'active':''} onClick={()=>setLanguage(item)}>{item}</button>)}</div><CodeBlock label={language==='MCP'?'Terminal':'agent.ts'} code={examples[language]}/><p className="codeNote"><Icon name="lock" size={14}/> Signing keys stay with the wallet. Scope travels with the agent.</p></div></section>
+    <section className="closing contentSection" data-reveal><div className="closingGlyph" aria-hidden="true"><Icon name="shield" size={50}/></div><span className="eyebrow">BUILD WITH A BOUNDARY</span><h2>More autonomous.<br/><span className="serifWord">Still accountable.</span></h2><p>Start your agent’s next chapter with clear permissions.</p><div className="heroActions"><a className="primaryLink" href="/app">Launch Pact Console <Icon name="arrow" size={17}/></a><a className="quietLink" href="/docs">Read the documentation <Icon name="external" size={16}/></a></div><div className="closingNote"><i className="statusDot"/> Available on Monad testnet</div></section>
   </main></Shell>;
-}
-const blocks = [
-  { id: 'overview', title: 'Overview', body: 'Pact is a programmable authority and economic accountability layer for autonomous agents. The testnet deployment supports bounded ERC-20 transfers, one funded obligation milestone, a scoped GitHub gateway, an approval inbox, and evidence hashing.' },
-  { id: 'authority', title: 'Authority model', body: 'A principal creates an onchain grant for an operational address. The grant fixes token, recipient, ceiling, single-action limit, approval threshold, expiry, delegation depth, and policy hash. Revocation stops new actions; existing obligations retain their written settlement rights.' },
-  { id: 'agents', title: 'Agents and credentials', body: 'After a grant confirms, register it in the Console. Agent API keys are scoped to read, quote, prepare, approval request, provider read, evidence write, or run trigger operations. Key issuance requires a principal wallet signature. Provider credentials are envelope-encrypted with AWS KMS and never returned by the API.' },
-  { id: 'managed-runs', title: 'Managed agent runs', body: 'Configure a bounded text model for OpenAI, Anthropic, or an operator-approved custom HTTPS endpoint. Runs are idempotent and queued. The runner checks the live grant again before calling the provider. It does not execute model tool calls or sign transactions. Bring your own provider key through the KMS vault, or use testnet Pact credit when that model is enabled by the operator.' },
-  { id: 'testnet-billing', title: 'Testnet model credit', body: 'When enabled, Pact-funded model access accepts a configured six-decimal Monad testnet token transferred to a configured treasury. The API verifies the finalized ERC-20 Transfer log and credits each transaction hash once. A run reserves the maximum configured model charge; actual reported token usage is charged at the configured provider rate plus 20%, with unused credit returned. Testnet credit has no cash redemption.' },
-  { id: 'approvals', title: 'Approval flow', body: 'An agent requests approval for a live exact transfer reservation. The principal reviews amount, recipient, token, nonce, deadline, and intent hash, then signs the bound EIP-712 payload. The signature is visible to the scoped agent only after approval; the account rechecks authority during execution.' },
-  { id: 'evidence', title: 'Evidence and receipts', body: 'Evidence is AES-256-GCM encrypted with a per-object KMS data key before private S3 storage. The chain anchors hashes and a named verifier verdict. A receipt proves recorded state and integrity of disclosed content; it does not prove subjective evidence truth.' },
-];
-function Docs() {
-  return <Shell active="/docs"><main className="docsPage"><div className="docsHero"><span className="eyebrow">DEVELOPER DOCUMENTATION</span><h1>Build with explicit authority.</h1><p>Integrate a bounded agent, inspect the exact limits, and keep signing keys out of prompts and browser bundles.</p></div>
-    <div className="docsLayout"><aside aria-label="Documentation sections"><span>GET STARTED</span>{blocks.map(block => <a key={block.id} href={`#${block.id}`}>{block.title}</a>)}<span>REFERENCES</span><a href="https://github.com/linoxbt/Pact">Source repository ↗</a><a href="/explorer">Public Explorer ↗</a></aside>
-      <div className="docsContent"><section className="docsCallout"><strong>Current status</strong><p>Six Pact contracts and the core API are live on Monad testnet (chain 10143). The Console connects to the testnet API. Managed credentials, evidence storage, the GitHub gateway, and model runs become available when their cloud secrets are configured. Use test tokens only.</p></section>
-        {blocks.map(block => <section id={block.id} key={block.id}><span className="eyebrow">PACT / {block.id.toUpperCase()}</span><h2>{block.title}</h2><p>{block.body}</p></section>)}
-        <section id="quickstart"><span className="eyebrow">FIRST INTEGRATION</span><h2>Quickstart</h2><ol><li>Create and confirm a root grant from the Console.</li><li>Register the agent to that grant and issue a scoped key.</li><li>Authenticate the operational wallet or use the scoped key for read and quote operations.</li><li>Quote an exact intent, reserve authority, and inspect operation finality.</li></ol><pre><code>{`# Install the workspace and run checks\npnpm install --frozen-lockfile\npnpm check\n\n# Run the local MCP server with a scoped session\nPACT_API_URL=https://pact-api-production-1a80.up.railway.app PACT_SESSION_TOKEN=... pnpm --filter @pact/mcp start`}</code></pre><p>TypeScript contract client: <code>@pact/sdk-ts</code>. Python HTTP client: <code>packages/sdk-python</code>. SDK and MCP calls prepare or inspect actions; the required wallet still signs onchain transactions.</p></section>
-      </div></div></main></Shell>;
 }
 function RecordFields({ value }: { value: unknown }) {
   if (value === null || typeof value !== 'object') return <code>{String(value)}</code>;
@@ -105,15 +89,12 @@ function Explorer() {
     } catch (cause) { setError(cause instanceof Error ? cause.message : 'Lookup failed'); }
     finally { setBusy(false); }
   };
-  return <Shell active="/explorer"><main className="explorerPage"><div className="docsHero"><span className="eyebrow">PACT / EXPLORER</span><h1>Follow authority.<br/><em>Verify the outcome.</em></h1><p>Inspect public grant disclosures and economic receipt anchors. Private evidence remains subject to its named verifier and disclosure policy.</p></div>
+  return <Shell active="/explorer"><main id="main-content" className="explorerPage"><div className="docsHero"><span className="eyebrow">PACT / EXPLORER</span><h1>Follow authority.<br/><em>Verify the outcome.</em></h1><p>Inspect public grant disclosures and economic receipt anchors. Private evidence remains subject to its named verifier and disclosure policy.</p></div>
     <section className="explorerSearch"><div className="segmented"><button className={kind === 'receipt' ? 'chosen' : ''} onClick={() => { setKind('receipt'); setResult(undefined); }}>Economic receipt</button><button className={kind === 'grant' ? 'chosen' : ''} onClick={() => { setKind('grant'); setResult(undefined); }}>Public grant</button></div>
       <div className="searchRow"><input aria-label={`${kind} ID`} value={id} onChange={e => setId(e.target.value)} onKeyDown={e => e.key === 'Enter' && void search()} placeholder={kind === 'receipt' ? 'Enter obligation ID' : 'Enter grant ID'}/><button onClick={() => void search()} disabled={busy}>Inspect record ↗</button></div></section>
     {error && <p className="inlineNotice" role="alert">{error}</p>}{result !== undefined && <section className="recordPanel"><span className="eyebrow">CHAIN-BOUND RECORD</span><h2>{kind === 'receipt' ? 'Receipt' : 'Grant'} #{id}</h2><RecordFields value={result}/><p>A chain anchor records a verdict and settlement. It does not establish the truth of private evidence or legal enforceability.</p></section>}
   </main></Shell>;
 }
-function Console() { return <Shell active="/app"><div className="consoleFrame">
-  <Suspense fallback={<main><p>Loading Console…</p></main>}><ConsoleApp/></Suspense>
-</div></Shell>; }
+function Console() { return <div className="siteShell appShell"><a href="#main-content" className="skipLink">Skip to workspace</a><Suspense fallback={<div className="appLoading"><Brand/><span className="loadingSpinner"/><p>Opening your workspace…</p></div>}><ConsoleApp/></Suspense></div>; }
 const path = window.location.pathname.replace(/\/$/, '') || '/';
-createRoot(document.getElementById('root')!).render(path === '/docs' ? <Docs/> :
-  path === '/explorer' ? <Explorer/> : path === '/app' ? <Console/> : <Landing/>);
+createRoot(document.getElementById('root')!).render(path === '/docs' ? <Shell active="/docs"><DocsContent/></Shell> : path === '/explorer' ? <Explorer/> : path === '/app' ? <Console/> : <Landing/>);

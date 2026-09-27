@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { encodeFunctionData, erc20Abi } from 'viem';
+import { Icon } from './ui.js';
 
 type Agent = { id: string; grant_id: string; operational_address: string; name: string;
   description: string; status: string };
@@ -17,6 +18,7 @@ const scopes = ['read', 'quote', 'prepare', 'approval.request', 'provider.read',
 
 export function AgentWorkbench({ token, request, provider }: { token: string;
   request: Request; provider: () => Provider | undefined }) {
+  const [detailTab, setDetailTab] = useState('keys');
   const [agents, setAgents] = useState<Agent[]>([]);
   const [selected, setSelected] = useState<Agent>();
   const [keys, setKeys] = useState<Key[]>([]);
@@ -147,11 +149,11 @@ export function AgentWorkbench({ token, request, provider }: { token: string;
   const toggleScope = (scope: string) => setKeyScopes(current => current.includes(scope)
     ? current.filter(value => value !== scope) : [...current, scope]);
   return <section className="agentWorkbench" id="agents"><div className="sectionHeading"><div>
-      <span className="eyebrow">IDENTITY / ACCESS</span><h2>Agents and credentials</h2>
-      <p>Register an onchain grant, issue bounded Pact access, and vault provider keys. An API key never replaces a grant or principal approval.</p>
+      <h2>Agent directory</h2>
+      <p>Select an agent to manage its access, or register a confirmed grant.</p>
     </div><button className="secondary" onClick={() => void run(refresh)} disabled={busy}>Refresh</button></div>
     {notice && <p role="status" className="inlineNotice">{notice}</p>}
-    <div className="grid"><article><h3>Register an agent</h3><p>First create a grant above. The registered operational address comes from live chain state.</p>
+    <div className="grid"><article><h3>Register an agent</h3><p>First create a grant in Grants & policies. The registered operational address comes from live chain state.</p>
       <label>Grant ID<input value={grantId} onChange={e => setGrantId(e.target.value)} placeholder="1"/></label>
       <label>Agent name<input value={name} onChange={e => setName(e.target.value)} placeholder="Procurement agent"/></label>
       <button onClick={register} disabled={busy || !grantId || !name}>Register grant</button>
@@ -167,7 +169,8 @@ export function AgentWorkbench({ token, request, provider }: { token: string;
           { status: selected.status === 'active' ? 'disabled' : 'active' }, 'PATCH');
         await detail(updated); await refresh();
       })} disabled={busy}>{selected.status === 'active' ? 'Disable agent' : 'Enable agent'}</button></div>
-      <h3>Issue Pact API key</h3><p>Wallet signature binds this key to the exact agent, scopes, and 30-day expiry.</p>
+      <div className="agentTabs" aria-label="Agent configuration">{[['keys','API keys','key'],['vault','Provider vault','lock'],['model','Model & runs','activity']].map(([id,label,icon])=><button key={id} aria-pressed={detailTab===id} onClick={()=>setDetailTab(id)}><Icon name={icon} size={15}/>{label}</button>)}</div>
+      <div hidden={detailTab!=='keys'}><h3>Issue Pact API key</h3><p>Wallet signature binds this key to the exact agent, scopes, and 30-day expiry.</p>
       <label>Key name<input value={keyName} onChange={e => setKeyName(e.target.value)} placeholder="Local MCP client"/></label>
       <fieldset className="scopeGrid"><legend>Allowed operations</legend>{scopes.map(scope => <label key={scope}>
         <input type="checkbox" checked={keyScopes.includes(scope)} onChange={() => toggleScope(scope)}/>{scope}</label>)}</fieldset>
@@ -177,7 +180,7 @@ export function AgentWorkbench({ token, request, provider }: { token: string;
         await request(`/v1/agents/${selected.id}/keys/${key.id}`, token, undefined, 'DELETE');
         await detail(selected);
       })}>Revoke</button></div>)}</div>
-      <h3>Provider credential</h3><p>Vault a GitHub or model key for this agent. Raw values never return through the API.</p>
+      </div><div hidden={detailTab!=='vault'}><h3>Provider credential</h3><p>Vault a GitHub or model key for this agent. Raw values never return through the API.</p>
       <label>Provider<select value={providerName} onChange={e => setProviderName(e.target.value)}><option value="github">GitHub</option><option value="openai">OpenAI</option><option value="anthropic">Anthropic</option><option value="custom">Approved custom model</option></select></label>
       <label>Label<input value={providerLabel} onChange={e => setProviderLabel(e.target.value)} placeholder="Production repository access"/></label>
       <label>Secret<input type="password" autoComplete="off" value={providerSecret} onChange={e => setProviderSecret(e.target.value)} placeholder="Paste provider key"/></label>
@@ -186,7 +189,7 @@ export function AgentWorkbench({ token, request, provider }: { token: string;
         await request(`/v1/agents/${selected.id}/credentials/${item.id}`, token, undefined, 'DELETE');
         await detail(selected);
       })}>Revoke</button></div>)}</div>
-      <h3>Managed model</h3><p>Configure a one-shot, text-only run. Every run checks the live grant before the model call. Provider billing uses your vaulted key.</p>
+      </div><div hidden={detailTab!=='model'}><h3>Managed model</h3><p>Configure a one-shot, text-only run. Every run checks the live grant before the model call. Provider billing uses your vaulted key.</p>
       <label>Funding<select value={fundingMode} onChange={e => setFundingMode(e.target.value as 'byo' | 'pact')}><option value="byo">Bring your own provider key</option><option value="pact">Pact-funded testnet credit (+20%)</option></select></label>
       <label>Model provider<select value={modelProvider} onChange={e => setModelProvider(e.target.value)}><option value="openai">OpenAI</option><option value="anthropic">Anthropic</option><option value="custom">Approved custom endpoint</option></select></label>
       <label>Model ID<input value={model} onChange={e => setModel(e.target.value)} placeholder="Provider model ID"/></label>
@@ -208,6 +211,6 @@ export function AgentWorkbench({ token, request, provider }: { token: string;
         const data = await request(`/v1/agents/${selected.id}/runs`, token);
         setRuns(data.runs);
       })}>Inspect</button></div>)}</div>
-    </> : <><h3>Select an agent</h3><p>Inspect keys, provider access, and live grant binding.</p></>}</article></div>
+    </div></> : <div className="emptyState"><Icon name="agent" size={36}/><h3>Select an agent</h3><p>Choose an agent to manage its keys, provider access, and model configuration.</p></div>}</article></div>
   </section>;
 }
