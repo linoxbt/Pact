@@ -1,7 +1,15 @@
 packages:
   - 'packages/*'
   - 'apps/*'
+allowBuilds:
+  '@reown/appkit': false
+  bufferutil: false
+  keccak: false
+  utf-8-validate: false
 overrides:
+  'ws@8.18.0': 8.21.0
+  'ws@8.18.3': 8.21.0
+  'use-sync-external-store': 1.7.0
   '@aws-sdk/checksums': 3.1001.0
   '@aws-sdk/core': 3.978.0
   '@aws-sdk/credential-provider-env': 3.972.71

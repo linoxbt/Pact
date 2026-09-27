@@ -1,10 +1,11 @@
-import { useState } from 'react';
+import { lazy, Suspense, useState } from 'react';
 import { createRoot } from 'react-dom/client';
-import { App, request } from './main.js';
+import { request } from './api.js';
 import './site.css';
 import './agent.css';
 
 const apiUrl = import.meta.env.VITE_PACT_API_URL as string | undefined;
+const ConsoleApp = lazy(() => import('./PrivyConsole.js'));
 const nav = [{ href: '/', label: 'Protocol' }, { href: '/docs', label: 'Docs' },
   { href: '/explorer', label: 'Explorer' }];
 function Brand() { return <a className="brand" href="/" aria-label="Pact home"><span className="brandMark"><span/></span>PACT<span className="brandDot">.</span></a>; }
@@ -110,7 +111,9 @@ function Explorer() {
     {error && <p className="inlineNotice" role="alert">{error}</p>}{result !== undefined && <section className="recordPanel"><span className="eyebrow">CHAIN-BOUND RECORD</span><h2>{kind === 'receipt' ? 'Receipt' : 'Grant'} #{id}</h2><RecordFields value={result}/><p>A chain anchor records a verdict and settlement. It does not establish the truth of private evidence or legal enforceability.</p></section>}
   </main></Shell>;
 }
-function Console() { return <Shell active="/app"><div className="consoleFrame"><App/></div></Shell>; }
+function Console() { return <Shell active="/app"><div className="consoleFrame">
+  <Suspense fallback={<main><p>Loading Console…</p></main>}><ConsoleApp/></Suspense>
+</div></Shell>; }
 const path = window.location.pathname.replace(/\/$/, '') || '/';
 createRoot(document.getElementById('root')!).render(path === '/docs' ? <Docs/> :
   path === '/explorer' ? <Explorer/> : path === '/app' ? <Console/> : <Landing/>);

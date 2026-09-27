@@ -1,12 +1,24 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { decodeEventLog, encodeFunctionData, isAddress, isHex, type Address, type Hex } from 'viem';
 import { AuthorityRegistryAbi } from '@pact/abis';
 import { canonicalGatewayPolicy, hashGatewayPolicy, policyApprovalPayload } from '@pact/policies';
+import { request } from './api.js';
 import './style.css';
 import './inbox.css';
 import { AgentWorkbench } from './AgentWorkbench.js';
 
 type Provider = { request(input: { method: string; params?: unknown[] }): Promise<unknown> };
+export type WalletAdapter = {
+  ready: boolean;
+  authenticated: boolean;
+  walletsReady: boolean;
+  wallets: readonly { address: string; chainId: string;
+    switchChain(chainId: number): Promise<void>;
+    getEthereumProvider(): Promise<Provider> }[];
+  login(): void;
+  connectWallet(): void;
+  logout(): Promise<void>;
+};
 type Config = { chainId: number; registry: Address; account: Address; accountPrincipal: Address };
 type Grant = { id: string; principal: Address; agent: Address; account: Address; token: Address;
   recipient: Address; ceiling: string; singleLimit: string; approvalThreshold: string;
@@ -15,36 +27,27 @@ type Operation = { id: string; kind: string; state: string; tx_hash: string | nu
 type Approval = { id: string; grant_id: string; reservation_id: string; intent_hash: Hex;
   intent: { grantId: string; agent: Address; token: Address; to: Address; amount: string;
     nonce: string; deadline: string; policyHash: Hex }; state: string; signature: string | null };
-const apiUrl = import.meta.env.VITE_PACT_API_URL as string | undefined;
-export const provider = () => (window as Window & { ethereum?: Provider }).ethereum;
 const json = (value: unknown) => JSON.stringify(value, (_, field) => typeof field === 'bigint' ? field.toString() : field);
-export async function request(path: string, token?: string, body?: unknown,
-  method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE') {
-  if (!apiUrl) throw Error('Set VITE_PACT_API_URL');
-  const response = await fetch(new URL(path, apiUrl), { method: method ?? (body === undefined ? 'GET' : 'POST'),
-    headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      ...(body === undefined ? {} : { 'Content-Type': 'application/json' }) },
-    body: body === undefined ? undefined : json(body), redirect: 'error' });
-  const data = await response.json();
-  if (!response.ok) throw Error(data.error || `API ${response.status}`);
-  return data;
-}
-async function walletTx(to: Address, data: Hex, from: Address): Promise<Hex> {
-  const wallet = provider();
-  if (!wallet) throw Error('Connect an EVM wallet');
-  return await wallet.request({ method: 'eth_sendTransaction', params: [{ from, to, data }] }) as Hex;
-}
-async function receipt(hash: Hex) {
-  const wallet = provider()!;
-  for (let attempt = 0; attempt < 60; attempt++) {
-    const value = await wallet.request({ method: 'eth_getTransactionReceipt', params: [hash] });
-    if (value) return value as { status: string; logs: { address: Address; data: Hex; topics: Hex[] }[] };
-    await new Promise(resolve => setTimeout(resolve, 2000));
-  }
-  throw Error('Transaction still pending; check your wallet using the transaction hash');
-}
-
-export function App() {
+export function App({ walletAdapter }: { walletAdapter?: WalletAdapter }) {
+  const activeProvider = useRef<Provider | undefined>(undefined);
+  const attemptedWallets = useRef('');
+  const provider = () => walletAdapter ? activeProvider.current :
+    (window as Window & { ethereum?: Provider }).ethereum;
+  const walletTx = async (to: Address, data: Hex, from: Address): Promise<Hex> => {
+    const wallet = provider();
+    if (!wallet) throw Error('Connect an EVM wallet');
+    return await wallet.request({ method: 'eth_sendTransaction', params: [{ from, to, data }] }) as Hex;
+  };
+  const receipt = async (hash: Hex) => {
+    const wallet = provider();
+    if (!wallet) throw Error('Connect an EVM wallet');
+    for (let attempt = 0; attempt < 60; attempt++) {
+      const value = await wallet.request({ method: 'eth_getTransactionReceipt', params: [hash] });
+      if (value) return value as { status: string; logs: { address: Address; data: Hex; topics: Hex[] }[] };
+      await new Promise(resolve => setTimeout(resolve, 2000));
+    }
+    throw Error('Transaction still pending; check your wallet using the transaction hash');
+  };
   const [config, setConfig] = useState<Config>();
   const [address, setAddress] = useState<Address>();
   const [token, setToken] = useState<string>();
@@ -85,13 +88,40 @@ export function App() {
     setOperations(recent.operations);
     setApprovals(inbox.approvals);
   };
-  const connect = () => run(async () => {
-    const wallet = provider();
-    if (!wallet) throw Error('Install an EVM wallet');
+  const connect = () => {
+    if (walletAdapter && !walletAdapter.ready) return;
+    if (walletAdapter && !walletAdapter.authenticated) {
+      walletAdapter.login();
+      return;
+    }
+    if (walletAdapter && !walletAdapter.walletsReady) return;
+    if (walletAdapter && walletAdapter.wallets.length === 0) {
+      walletAdapter.connectWallet();
+      return;
+    }
+    void run(async () => {
     const settings = await request('/v1/config') as Config;
+    let wallet: Provider | undefined;
+    if (walletAdapter) {
+      const selected = walletAdapter.wallets.find(item =>
+        item.address.toLowerCase() === settings.accountPrincipal.toLowerCase());
+      if (!selected) {
+        walletAdapter.connectWallet();
+        setMessage(`Connect principal wallet ${settings.accountPrincipal} to manage Pact authority.`);
+        return;
+      }
+      if (selected.chainId !== `eip155:${settings.chainId}`)
+        await selected.switchChain(settings.chainId);
+      wallet = await selected.getEthereumProvider();
+      activeProvider.current = wallet;
+    } else {
+      wallet = provider();
+    }
+    if (!wallet) throw Error('Connect an EVM wallet');
     const accounts = await wallet.request({ method: 'eth_requestAccounts' }) as Address[];
-    const current = accounts[0];
-    if (!current) throw Error('Wallet returned no address');
+    const current = accounts.find(item =>
+      item.toLowerCase() === settings.accountPrincipal.toLowerCase());
+    if (!current) throw Error('Connected wallet is not the Pact principal');
     const chain = Number(BigInt(await wallet.request({ method: 'eth_chainId' }) as string));
     if (chain !== settings.chainId) throw Error(`Switch wallet to chain ${settings.chainId}`);
     const challenge = await request('/v1/auth/challenge', undefined, { address: current });
@@ -100,7 +130,35 @@ export function App() {
     setConfig(settings); setAddress(current); setToken(session.token);
     await refresh(session.token);
     setMessage(`Signed in as ${current}`);
-  });
+    });
+  };
+  const walletSet = walletAdapter?.wallets.map(wallet => wallet.address.toLowerCase()).join(',') ?? '';
+  useEffect(() => {
+    if (!walletAdapter?.ready || !walletAdapter.authenticated || !walletAdapter.walletsReady ||
+        !walletSet || token || busy ||
+        attemptedWallets.current === walletSet) return;
+    attemptedWallets.current = walletSet;
+    connect();
+  }, [walletAdapter?.ready, walletAdapter?.authenticated, walletAdapter?.walletsReady,
+    walletSet, token, busy]);
+  useEffect(() => {
+    if (!walletAdapter?.ready || !walletAdapter.authenticated || !walletAdapter.walletsReady ||
+        !token || !address || walletSet.split(',').includes(address.toLowerCase())) return;
+    void request('/v1/auth/logout', token, {}).catch(() => {});
+    activeProvider.current = undefined;
+    setToken(undefined); setAddress(undefined); setSelected(undefined);
+    setGrants([]); setOperations([]); setApprovals([]);
+    setMessage('The connected principal wallet changed. Sign in again.');
+  }, [walletAdapter?.ready, walletAdapter?.authenticated, walletAdapter?.walletsReady,
+    walletSet, token, address]);
+  useEffect(() => {
+    if (!walletAdapter?.ready || walletAdapter.authenticated) return;
+    if (token) void request('/v1/auth/logout', token, {}).catch(() => {});
+    attemptedWallets.current = '';
+    activeProvider.current = undefined;
+    setToken(undefined); setAddress(undefined); setSelected(undefined);
+    setGrants([]); setOperations([]); setApprovals([]);
+  }, [walletAdapter?.ready, walletAdapter?.authenticated, token]);
   const policy = () => canonicalGatewayPolicy({ version: 1, provider: 'github', operation: 'repository.read',
     repositories: repositories.split(',').map(item => item.trim()).filter(Boolean),
     maxRequests: Number(maxRequests), periodSeconds: Number(periodSeconds),
@@ -191,12 +249,17 @@ export function App() {
     setMessage(`Rejected request ${item.id}.`);
   });
   const logout = () => run(async () => {
-    if (token) await request('/v1/auth/logout', token, {});
-    setToken(undefined); setAddress(undefined); setSelected(undefined);
-    setGrants([]); setOperations([]); setApprovals([]);
-    setMessage('Session ended.');
+    if (token) await request('/v1/auth/logout', token, {}).catch(() => {});
+    try { if (walletAdapter) await walletAdapter.logout(); }
+    finally {
+      activeProvider.current = undefined;
+      attemptedWallets.current = walletSet;
+      setToken(undefined); setAddress(undefined); setSelected(undefined);
+      setGrants([]); setOperations([]); setApprovals([]);
+      setMessage('Session ended.');
+    }
   });
-  return <main><header><div><span className="eyebrow">PACT / CONSOLE</span><h1>Authority, under control.</h1><p>Manage grants, policy, and economic operations from the principal wallet.</p></div><div className="wallet">{address ? <><code>{address}</code><button onClick={logout} disabled={busy}>Sign out</button></> : <button onClick={connect} disabled={busy}>Connect wallet</button>}</div></header>
+  return <main><header><div><span className="eyebrow">PACT / CONSOLE</span><h1>Authority, under control.</h1><p>Manage grants, policy, and economic operations from the principal wallet.</p></div><div className="wallet">{address ? <><code>{address}</code><button onClick={logout} disabled={busy}>Sign out</button></> : <button onClick={connect} disabled={busy || (walletAdapter && !walletAdapter.ready)}>{walletAdapter ? walletAdapter.authenticated ? 'Connect principal wallet' : 'Sign in with Privy' : 'Connect wallet'}</button>}</div></header>
     <div role="status" className="notice">{message}</div>
     {token && <><section className="grid"><article><h2>Create a root grant</h2><p>Funds remain in the controlled PactAccount. Values are ERC-20 base units.</p>
       <label>Agent address<input value={agent} onChange={e => setAgent(e.target.value)} placeholder="0x…"/></label>
