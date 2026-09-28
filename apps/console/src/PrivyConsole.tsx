@@ -1,4 +1,4 @@
-import { PrivyProvider, usePrivy, useWallets } from '@privy-io/react-auth';
+import { PrivyProvider, useLinkWithPasskey, usePrivy, useWallets } from '@privy-io/react-auth';
 import { defineChain } from 'viem';
 import { App, type WalletAdapter } from './main.js';
 
@@ -10,17 +10,20 @@ const monadTestnet = defineChain({ id: 10143, name: 'Monad Testnet',
   testnet: true });
 
 function WalletConsole() {
-  const { ready, authenticated, login, connectWallet, logout } = usePrivy();
+  const { ready, authenticated, user, login, connectWallet, logout } = usePrivy();
+  const { linkWithPasskey } = useLinkWithPasskey();
   const { wallets, ready: walletsReady } = useWallets();
   const walletAdapter: WalletAdapter = { ready, authenticated, walletsReady, wallets,
     login: () => login(), connectWallet: () => connectWallet(),
-    logout: () => logout() };
+    logout: () => logout(),
+    hasPasskey: user?.linkedAccounts.some(account => account.type === 'passkey') ?? false,
+    createPasskey: () => linkWithPasskey({ name: 'Pact Console' }) };
   return <App walletAdapter={walletAdapter}/>;
 }
 
 export default function PrivyConsole() {
   if (!appId) return <App/>;
-  return <PrivyProvider appId={appId} config={{ loginMethods: ['wallet'],
+  return <PrivyProvider appId={appId} config={{ loginMethods: ['email', 'wallet', 'passkey'],
     supportedChains: [monadTestnet], defaultChain: monadTestnet,
-    appearance: { theme: 'light', accentColor: '#245342' } }}><WalletConsole/></PrivyProvider>;
+    appearance: { theme: 'light', accentColor: '#245342', showWalletLoginFirst: false, walletChainType: 'ethereum-only' } }}><WalletConsole/></PrivyProvider>;
 }

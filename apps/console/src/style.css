@@ -9,3 +9,23 @@
 @media(max-width:760px){.workspaceSidebar nav button{font-size:11px}.consoleMain p{font-size:12px}.consoleMain label{font-size:11px}.metricCard>div{font-size:9px}.metricCard>small{font-size:8px}.consoleMain dl{font-size:11px}.workspace .agentTabs button{font-size:10px}}
 
 .consoleMain .sectionHeading h2{font-size:22px;line-height:1.3;margin:0 0 10px}.consoleMain .sectionHeading .eyebrow{font-size:9px;margin-bottom:12px}.consoleMain .sectionHeading{margin-bottom:24px}.consoleMain .sectionHeading p{font-size:12px;margin:8px 0 0}
+
+/* The workspace menu is a modal drawer at every viewport size. */
+.workspace{display:block}
+.workspaceDrawer{position:fixed;inset:0 auto 0 0;margin:0;padding:0;width:min(300px,88vw);height:100dvh;max-height:100dvh;max-width:none;border:0;background:#112e25;color:#dcecdf;overflow-y:auto;box-shadow:16px 0 60px #071b2433}
+.workspaceDrawer::backdrop{background:#102b2666;backdrop-filter:blur(3px)}
+.workspaceDrawer[open]{animation:workspaceMenuIn .2s ease-out}
+.workspaceDrawer .workspaceSidebar{position:static;min-height:100%;height:auto;padding:26px 20px 0;display:flex}
+.drawerHeading{display:flex;align-items:center;justify-content:space-between;margin:0 10px 27px;gap:20px}
+.drawerHeading .brand{font-size:30px}
+.drawerHeading button{display:grid;place-items:center;background:#264a39;color:#dcecdf;border-radius:6px;width:38px;height:38px}
+.workspaceDrawer .workspaceIdentity{display:flex}
+.workspaceDrawer .navGroup{display:block}
+.workspaceDrawer nav{display:grid;overflow:visible;gap:5px}
+.workspaceDrawer nav button{white-space:normal;font-size:12px;padding:13px}
+.workspaceDrawer .sidebarBottom{display:block}
+.workspaceBody .menuToggle{background:transparent;color:#244f38;padding:9px!important;border:1px solid #d5e0ce;border-radius:6px;flex-shrink:0}
+.workspaceBody .menuToggle:hover:not(:disabled){background:#e6edde}
+@keyframes workspaceMenuIn{from{transform:translateX(-100%)}to{transform:translateX(0)}}
+@media(max-width:760px){.workspaceBreadcrumb{display:none}.workspaceTopbar>div:first-child>span{display:none}.workspaceTopbar{align-items:center}.workspaceTopbar .wallet{justify-content:flex-end;flex:1}.workspaceTopbar .wallet button{font-size:10px}.workspaceTopbar .wallet:has(button:nth-of-type(3)){flex-basis:100%}}
+@media(prefers-reduced-motion:reduce){.workspaceDrawer[open]{animation:none}}

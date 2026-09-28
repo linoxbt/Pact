@@ -19,6 +19,8 @@ export type WalletAdapter = {
   login(): void;
   connectWallet(): void;
   logout(): Promise<void>;
+  hasPasskey?: boolean;
+  createPasskey?(): Promise<void>;
 };
 type Config = { chainId: number; registry: Address; account: Address; accountPrincipal: Address };
 type Grant = { id: string; principal: Address; agent: Address; account: Address; token: Address;
@@ -31,6 +33,16 @@ type Approval = { id: string; grant_id: string; reservation_id: string; intent_h
 const json = (value: unknown) => JSON.stringify(value, (_, field) => typeof field === 'bigint' ? field.toString() : field);
 export function App({ walletAdapter }: { walletAdapter?: WalletAdapter }) {
   const [view, setView] = useState('overview');
+  const menu = useRef<HTMLDialogElement>(null);
+  const menuButton = useRef<HTMLButtonElement>(null);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const closeMenu = () => menu.current?.close();
+  useEffect(() => {
+    if (!menuOpen) return;
+    const previous = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => { document.body.style.overflow = previous; };
+  }, [menuOpen]);
   const activeProvider = useRef<Provider | undefined>(undefined);
   const attemptedWallets = useRef('');
   const provider = () => walletAdapter ? activeProvider.current :
@@ -272,11 +284,12 @@ export function App({ walletAdapter }: { walletAdapter?: WalletAdapter }) {
   const currentView = navigation.find(item => item.id === view)!;
   const pendingApprovals = approvals.filter(item => item.state === 'pending').length;
   const shortAddress = address ? `${address.slice(0,6)}…${address.slice(-4)}` : 'Not connected';
-  const loginLabel = walletAdapter ? walletAdapter.authenticated ? 'Connect principal wallet' : 'Sign in with Privy' : 'Connect wallet';
+  const loginLabel = walletAdapter ? walletAdapter.authenticated ? 'Connect principal wallet' : 'Sign in' : 'Connect wallet';
   const loginDisabled = busy || Boolean(walletAdapter && !walletAdapter.ready);
-  return <div className="workspace"><aside className="workspaceSidebar"><Brand/><div className="workspaceIdentity"><span className="workspaceAvatar">P</span><div>Pact workspace<small><i className="statusDot"/> Monad testnet</small></div><span className="workspaceVersion">01</span></div><span className="navGroup">WORKSPACE</span><nav aria-label="Workspace navigation">{navigation.map(item => <button key={item.id} onClick={() => setView(item.id)} aria-current={view === item.id ? 'page' : undefined}><Icon name={item.icon} size={18}/>{item.label}{item.id === 'approvals' && pendingApprovals > 0 && <span className="navCount">{pendingApprovals}</span>}</button>)}</nav><div className="sidebarBottom"><a href="/docs"><Icon name="book" size={17}/> Documentation <Icon name="external" size={13}/></a><a href="/explorer"><Icon name="globe" size={17}/> Public Explorer <Icon name="external" size={13}/></a><div className="sidebarAccount"><span><Icon name="wallet" size={18}/></span><div>{shortAddress}<small>{token ? 'Principal session' : 'Connect to get started'}</small></div></div></div></aside>
-    <div className="workspaceBody"><div className="workspaceTopbar"><div><span>Workspace</span><span>/</span><strong>{currentView.label}</strong></div><div className="wallet"><span className="networkBadge"><i className="statusDot"/> Monad testnet</span>{address ? <><code title={address}>{shortAddress}</code><button className="secondary" onClick={logout} disabled={busy}>Sign out</button></> : <button onClick={connect} disabled={loginDisabled}><Icon name="wallet" size={15}/>{loginLabel}</button>}</div></div>
+  return <div className="workspace"><dialog ref={menu} id="workspace-menu" className="workspaceDrawer" aria-label="Workspace menu" onClose={() => { setMenuOpen(false); menuButton.current?.focus(); }} onClick={event => { if (event.target === event.currentTarget) closeMenu(); }}><aside className="workspaceSidebar"><div className="drawerHeading"><Brand/><button aria-label="Close navigation" onClick={closeMenu}><Icon name="close"/></button></div><div className="workspaceIdentity"><span className="workspaceAvatar">P</span><div>Pact workspace<small><i className="statusDot"/> Monad testnet</small></div><span className="workspaceVersion">01</span></div><span className="navGroup">WORKSPACE</span><nav aria-label="Workspace navigation">{navigation.map(item => <button key={item.id} onClick={() => { setView(item.id); closeMenu(); }} aria-current={view === item.id ? 'page' : undefined}><Icon name={item.icon} size={18}/>{item.label}{item.id === 'approvals' && pendingApprovals > 0 && <span className="navCount">{pendingApprovals}</span>}</button>)}</nav><div className="sidebarBottom"><a href="/docs"><Icon name="book" size={17}/> Documentation <Icon name="external" size={13}/></a><a href="/explorer"><Icon name="globe" size={17}/> Public Explorer <Icon name="external" size={13}/></a><div className="sidebarAccount"><span><Icon name="wallet" size={18}/></span><div>{shortAddress}<small>{token ? 'Principal session' : 'Connect to get started'}</small></div></div></div></aside></dialog>
+    <div className="workspaceBody"><div className="workspaceTopbar"><div><button ref={menuButton} className="menuToggle" aria-label="Open navigation" aria-controls="workspace-menu" aria-expanded={menuOpen} onClick={() => { menu.current?.showModal(); setMenuOpen(true); }}><Icon name="menu"/></button><span className="workspaceBreadcrumb">Workspace</span><span>/</span><strong>{currentView.label}</strong></div><div className="wallet"><span className="networkBadge"><i className="statusDot"/> Monad testnet</span>{address ? <><code title={address}>{shortAddress}</code><button className="secondary" onClick={logout} disabled={busy}>Sign out</button></> : <button onClick={connect} disabled={loginDisabled}><Icon name="wallet" size={15}/>{loginLabel}</button>}{walletAdapter?.authenticated && <><button className="secondary" disabled={busy || !walletAdapter.createPasskey || !(window.isSecureContext && 'PublicKeyCredential' in window)} title={window.isSecureContext && 'PublicKeyCredential' in window ? 'Save a passkey to sign in with your device' : 'Passkeys require a supported browser on HTTPS'} onClick={() => void run(async () => { await walletAdapter.createPasskey!(); setMessage('Passkey created. You can now use it to sign in on this site.'); })}><Icon name="key" size={15}/>{walletAdapter.hasPasskey ? 'Add passkey' : 'Create passkey'}</button>{!address && <button className="secondary" onClick={logout} disabled={busy}>Sign out</button>}</>}</div></div>
     <main id="main-content" className="consoleMain"><header className="workspaceHeading"><div><span className="eyebrow">PACT / CONTROL PLANE</span><h1>{view === 'overview' ? 'Your authority, at a glance.' : currentView.label}</h1><p>{currentView.description}</p></div><a className="helpLink" href={`/docs#${view === 'agents' ? 'agents' : view === 'approvals' ? 'approvals' : 'quickstart'}`}><Icon name="book" size={15}/> Guide <Icon name="external" size={13}/></a></header>
+    {walletAdapter?.authenticated && !token && <div className="notice" role="status">You’re signed in. Connect your authorized principal wallet to manage this workspace. You can also create a passkey for your next visit.</div>}
     {message !== 'Connect a principal wallet to manage authority.' && <div role="status" className="notice">{message}</div>}
     {view === 'overview' && <div className="overviewView"><div className="metricGrid">{[
       ['shield','Registered grants',token ? String(grants.length) : '—','Indexed authority records'],
