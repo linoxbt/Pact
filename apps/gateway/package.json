@@ -19,7 +19,8 @@
     "@pact/security": "workspace:*",
     "@pact/sdk-ts": "workspace:*",
     "fastify": "5.12.5",
-    "viem": "^2.37.6"
+    "viem": "^2.37.6",
+    "zod": "4.6.5"
   },
   "devDependencies": { "@types/node": "^22.0.0", "typescript": "^5.9.3" }
 }
