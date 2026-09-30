@@ -7,6 +7,7 @@ const apiOrigin = import.meta.env.VITE_PACT_API_URL as string | undefined;
 const gatewayOrigin = import.meta.env.VITE_PACT_GATEWAY_URL as string | undefined;
 type Item = Record<string, any>;
 type View = 'overview'|'agents'|'grants'|'endpoints'|'policies'|'keys'|'approvals'|'activity'|'account';
+type ControlStatus = 'idle'|'loading'|'ready'|'unavailable';
 const nav: { id: View; label: string; icon: string }[] = [
   { id: 'overview', label: 'Overview', icon: 'grid' },
   { id: 'agents', label: 'Agents', icon: 'agent' },
@@ -28,8 +29,13 @@ async function api<T = Item>(path: string, body?: unknown, method?: string): Pro
     redirect: 'error', headers: { Authorization: `Bearer ${token}`,
       ...(body === undefined ? {} : { 'Content-Type': 'application/json' }) },
     ...(body === undefined ? {} : { body: json(body) }) });
-  const data = await response.json() as Item;
-  if (!response.ok) throw Error(data.error ?? `Pact API ${response.status}`);
+  const data = await response.json().catch(() => ({})) as Item;
+  if (!response.ok) {
+    if (response.status === 404 && path.startsWith('/v2/')) {
+      throw Error('The live Pact API does not have the agent management release yet (HTTP 404).');
+    }
+    throw Error(data.message ?? data.error ?? `Pact API ${response.status}`);
+  }
   return data as T;
 }
 const later = (days: number) => new Date(Date.now() + days * 86_400_000).toISOString();
@@ -60,6 +66,9 @@ export function ControlConsole() {
   const [view, setView] = useState<View>('overview');
   const [menuOpen, setMenuOpen] = useState(false);
   const [account, setAccount] = useState<Item>();
+  const [controlStatus, setControlStatus] = useState<ControlStatus>('idle');
+  const [controlError, setControlError] = useState('');
+  const [connectionAttempt, setConnectionAttempt] = useState(0);
   const [agents, setAgents] = useState<Item[]>([]);
   const [grants, setGrants] = useState<Item[]>([]);
   const [services, setServices] = useState<Item[]>([]);
@@ -138,9 +147,33 @@ export function ControlConsole() {
     setActivityCursor(data.nextCursor);
   };
   useEffect(() => {
-    if (!ready || !authenticated) { setAccount(undefined); return; }
-    void run(async () => { setAccount(await api('/v2/account')); await refresh(); });
-  }, [ready, authenticated, user?.id]);
+    if (!ready || !authenticated) {
+      setAccount(undefined);
+      setControlStatus('idle');
+      setControlError('');
+      return;
+    }
+    let cancelled = false;
+    setAccount(undefined);
+    setControlStatus('loading');
+    setControlError('');
+    void (async () => {
+      try {
+        const nextAccount = await api('/v2/account');
+        if (cancelled) return;
+        await refresh();
+        if (cancelled) return;
+        setAccount(nextAccount);
+        setControlStatus('ready');
+      } catch (cause) {
+        if (cancelled) return;
+        setAccount(undefined);
+        setControlError(cause instanceof Error ? cause.message : 'Unable to reach the Pact API.');
+        setControlStatus('unavailable');
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [ready, authenticated, user?.id, connectionAttempt]);
   useEffect(() => {
     if (!account || account.verificationStatus === 'verified' || !walletsReady) return;
     const embedded = wallets.find(wallet => wallet.walletClientType === 'privy');
@@ -205,10 +238,15 @@ export function ControlConsole() {
       {ready && !authenticated && <section className="cpHeroPanel"><span className="cpEyebrow">YOUR AGENT WORKSPACE</span><h2>Start with your account.</h2>
         <p>Sign in with email, passkey, or another available method. Pact creates a unique account address for you automatically. No external wallet is needed to connect an HTTP agent.</p>
         <button className="cpPrimary" onClick={() => login()}>Create account or sign in <Icon name="arrow" size={16}/></button></section>}
-      {authenticated && account?.verificationStatus !== 'verified' && <section className="cpHeroPanel"><span className="cpEyebrow">VERIFYING ACCOUNT</span><h2>Setting up your principal address.</h2>
+      {authenticated && controlStatus === 'loading' && <section className="cpHeroPanel" role="status"><span className="cpEyebrow">CONNECTING</span><h2>Loading your workspace.</h2><p>Checking your account and agent management API.</p></section>}
+      {authenticated && controlStatus === 'unavailable' && <section className="cpHeroPanel" role="alert"><span className="cpEyebrow">SERVICE UNAVAILABLE</span><h2>{nav.find(item => item.id === view)?.label} cannot load yet.</h2>
+        <p>{controlError} Your account verification has not failed; the Console cannot check it until the API responds.</p>
+        <button className="cpPrimary" onClick={() => setConnectionAttempt(value => value + 1)}>Retry connection</button>
+        <p><a href="/legacy">Open existing Monad grants ↗</a></p></section>}
+      {authenticated && controlStatus === 'ready' && account?.verificationStatus !== 'verified' && <section className="cpHeroPanel"><span className="cpEyebrow">VERIFYING ACCOUNT</span><h2>Setting up your principal address.</h2>
         <p>Pact is verifying the address created for your account. If a signing prompt appears, approve the account verification message. This does not send a blockchain transaction.</p>
         <button onClick={() => { bootstrapped.current = ''; setVerificationAttempt(value => value + 1); }} disabled={!walletsReady || busy}>Retry verification</button></section>}
-      {authenticated && account?.verificationStatus === 'verified' && <>
+      {authenticated && controlStatus === 'ready' && account?.verificationStatus === 'verified' && <>
       {view === 'overview' && <><div className="cpStats">{[
         ['Agents',agents.length,'agent'],['Endpoints',endpoints.length,'globe'],
         ['Active keys',activeKeyCount,'key'],
