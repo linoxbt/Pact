@@ -37,6 +37,7 @@ function fixture() {
         args: [action.grantId, `0x${'22'.repeat(32)}`, action.amount, expiry] }) },
     operations: { prepare: async input => ({ id: 'op-1', ...input, state: 'prepared' }) },
   };
+  ctx.pact.forGrant = async () => ctx.pact;
   return ctx;
 }
 

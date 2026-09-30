@@ -48,10 +48,19 @@ export class PactIndexer {
       blocks.push(...await Promise.all(Array.from({ length: count }, (_, index) =>
         this.rpc.getBlock({ blockNumber: from + BigInt(offset + index) }))));
     }
+    const headerHashes = new Map(blocks.map(block => [block.number.toString(), block.hash.toLowerCase()]));
+    if (logs.some(log => log.blockNumber === null || log.blockHash === null ||
+        headerHashes.get(log.blockNumber.toString()) !== log.blockHash.toLowerCase()))
+      throw new Error('RPC returned logs from a different chain view');
     const client = await this.database.connect();
     try {
       await client.query('BEGIN');
       await client.query('SELECT pg_advisory_xact_lock($1)', [0x50414354 + this.chainId]);
+      const lockedCursor = await client.query<Cursor>(
+        'SELECT block_number,block_hash FROM pact_indexer_cursor WHERE chain_id=$1', [this.chainId]);
+      if ((lockedCursor.rows[0]?.block_number ?? null) !== (next.rows[0]?.block_number ?? null) ||
+          (lockedCursor.rows[0]?.block_hash ?? null) !== (next.rows[0]?.block_hash ?? null))
+        throw new Error('Indexer cursor changed while fetching chain data');
       for (const block of blocks) await client.query(
         `INSERT INTO pact_indexer_blocks (chain_id,block_number,block_hash) VALUES ($1,$2,$3)
          ON CONFLICT (chain_id,block_number) DO UPDATE SET block_hash=excluded.block_hash`,

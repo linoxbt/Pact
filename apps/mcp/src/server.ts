@@ -13,7 +13,9 @@ const terms = z.object({ grantId: positive, reservationId: positive, provider: a
   specificationHash: bytes32 }).strict();
 const key = z.string().regex(/^[A-Za-z0-9._:-]{8,128}$/);
 
-export type PactApi = { get(path: string): Promise<unknown>; post(path: string, body: unknown): Promise<unknown> };
+export type PactApi = { get(path: string): Promise<unknown>; post(path: string, body: unknown): Promise<unknown>;
+  proxy?: (agentId: string, serviceId: string, method: string, path: string,
+    body?: unknown, approvalId?: string) => Promise<unknown> };
 
 /** All authority checks happen in the API against the live onchain grant. */
 export function createPactMcp(api: PactApi): McpServer {
@@ -94,6 +96,16 @@ export function createPactMcp(api: PactApi): McpServer {
   server.registerTool('pact_run', { description: 'Read a managed agent run and its output or failure',
     inputSchema: z.object({ agentId: z.uuid(), runId: z.uuid() }) }, ({ agentId, runId }) =>
     result(() => api.get(`/v1/agents/${agentId}/runs/${runId}`)));
+  server.registerTool('pact_proxy_request', {
+    description: 'Call one registered HTTP operation through Pact. Ordered policy is checked before forwarding; the scoped key never signs transactions.',
+    inputSchema: z.object({ agentId: z.uuid(), serviceId: z.uuid(),
+      method: z.enum(['GET','POST','PUT','PATCH','DELETE']),
+      path: z.string().regex(/^\/(?!\/)[A-Za-z0-9/_~.:-]*$/).refine(value => !value.includes('..')),
+      body: z.record(z.string(), z.unknown()).optional(), approvalId: z.uuid().optional() }),
+  }, ({ agentId, serviceId, method, path, body, approvalId }) => result(() => {
+    if (!api.proxy) throw new Error('PACT_GATEWAY_URL and PACT_AGENT_KEY required');
+    return api.proxy(agentId, serviceId, method, path, body, approvalId);
+  }));
   return server;
 }
 
@@ -114,4 +126,31 @@ export function pactHttpApi(baseUrl: string, token: string, fetcher: typeof fetc
     return data;
   };
   return { get: path => invoke('GET', path), post: (path, body) => invoke('POST', path, body) };
+}
+
+export function pactGatewayApi(baseUrl: string, token: string, fetcher: typeof fetch = fetch): NonNullable<PactApi['proxy']> {
+  const url = new URL(baseUrl);
+  if (url.protocol !== 'https:' && !(url.protocol === 'http:' &&
+      ['localhost','127.0.0.1','[::1]'].includes(url.hostname))) throw new Error('HTTPS required');
+  if (url.username || url.password || url.search || url.hash || url.pathname !== '/')
+    throw new Error('Invalid gateway origin');
+  if (!/^pat_[A-Za-z0-9_-]{43}$/.test(token)) throw new Error('Invalid integration key');
+  return async (agentId, serviceId, method, path, body, approvalId) => {
+    if (!z.uuid().safeParse(agentId).success || !z.uuid().safeParse(serviceId).success ||
+        !/^\/(?!\/)[A-Za-z0-9/_~.:-]*$/.test(path) || path.includes('..'))
+      throw new Error('Invalid proxy route');
+    const response = await fetcher(new URL(`/v2/proxy/${agentId}/${serviceId}${path}`, url), {
+      method, redirect: 'error', signal: AbortSignal.timeout(15_000),
+      headers: { Authorization: `Bearer ${token}`,
+        ...(body === undefined ? {} : { 'Content-Type': 'application/json' }),
+        ...(approvalId ? { 'X-Pact-Approval-Id': approvalId } : {}) },
+      ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+    });
+    const raw = await response.text();
+    if (raw.length > 1_000_000) throw new Error('Pact proxy response too large');
+    const data = response.headers.get('content-type')?.includes('application/json') ? JSON.parse(raw) : raw;
+    if (!response.ok) throw new Error(`Pact proxy ${response.status}: ${
+      typeof data === 'object' && data && 'error' in data ? String(data.error) : 'request_failed'}`);
+    return data;
+  };
 }

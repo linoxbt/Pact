@@ -48,42 +48,44 @@ export class Reconciler {
     try { receipt = await this.rpc.getTransactionReceipt({ hash: row.tx_hash }); }
     catch {
       if (Date.now() - row.submitted_at.getTime() > 15 * 60_000)
-        await this.update(row.id, 'recoverable', 'RECEIPT_NOT_FOUND');
+        await this.update(row, 'recoverable', 'RECEIPT_NOT_FOUND');
       return;
     }
     const head = await this.rpc.getBlockNumber();
     if (head < receipt.blockNumber + BigInt(this.finalityBlocks)) return;
     const canonicalBlock = await this.rpc.getBlock({ blockNumber: receipt.blockNumber });
     if (canonicalBlock.hash !== receipt.blockHash) {
-      await this.update(row.id, 'recoverable', 'BLOCK_REORG');
+      await this.update(row, 'recoverable', 'BLOCK_REORG');
       return;
     }
     if (receipt.status !== 'success') {
-      await this.update(row.id, 'reverted', 'EXECUTION_REVERTED');
+      await this.update(row, 'reverted', 'EXECUTION_REVERTED');
       return;
     }
     if (receipt.to?.toLowerCase() !== row.target_address.toLowerCase() ||
         !matchesExpectedEvent(row, receipt.logs)) {
-      await this.update(row.id, 'recoverable', 'EXPECTED_EVENT_MISSING');
+      await this.update(row, 'recoverable', 'EXPECTED_EVENT_MISSING');
       return;
     }
     await this.confirm(row);
   }
 
-  private async update(id: string, state: 'confirmed' | 'reverted' | 'recoverable', code: string | null) {
+  private async update(row: PendingRow, state: 'confirmed' | 'reverted' | 'recoverable', code: string | null) {
     await this.database.query(
       `UPDATE pact_operations SET state=$2,error_code=$3,updated_at=now()
-       WHERE id=$1 AND state IN ('submitted','recoverable')`, [id, state, code]);
+       WHERE id=$1 AND tx_hash=$4 AND state IN ('submitted','recoverable')`,
+      [row.id, state, code, row.tx_hash]);
   }
 
   private async confirm(row: PendingRow): Promise<void> {
     const client = await this.database.connect();
     try {
       await client.query('BEGIN');
-      await client.query(
+      const confirmed = await client.query(
         `UPDATE pact_operations SET state='confirmed',error_code=NULL,updated_at=now()
-         WHERE id=$1 AND state IN ('submitted','recoverable')`, [row.id]);
-      if (row.kind === 'transfer-execution' && row.reservation_id !== null) await client.query(
+         WHERE id=$1 AND tx_hash=$2 AND state IN ('submitted','recoverable') RETURNING id`,
+        [row.id, row.tx_hash]);
+      if (confirmed.rowCount === 1 && row.kind === 'transfer-execution' && row.reservation_id !== null) await client.query(
         `UPDATE pact_approval_requests SET state='consumed',consumed_at=now(),updated_at=now()
          WHERE grant_id=$1 AND reservation_id=$2 AND lower(intent_hash)=lower($3)
            AND state='approved'`, [row.grant_id, row.reservation_id, row.action_hash]);

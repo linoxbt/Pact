@@ -10,6 +10,7 @@
     "test": "pnpm build && node --test test/*.test.mjs"
   },
   "dependencies": {
+    "@fastify/cors": "11.3.0",
     "@aws-sdk/client-secrets-manager": "3.1110.0",
     "@aws-sdk/client-kms": "3.1110.0",
     "@fastify/helmet": "13.1.1",

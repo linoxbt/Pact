@@ -18,7 +18,8 @@ export class PactHttpClient {
       method, redirect: 'error', signal: AbortSignal.timeout(15_000),
       headers: { Authorization: `Bearer ${this.token}`,
         ...(body === undefined ? {} : { 'Content-Type': 'application/json' }) },
-      ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+      ...(body === undefined ? {} : { body: JSON.stringify(body,
+        (_key, value: unknown) => typeof value === 'bigint' ? value.toString() : value) }),
     });
     const raw = await response.text();
     if (raw.length > 1024 * 1024) throw new Error('Pact response too large');
@@ -81,4 +82,29 @@ export class PactHttpClient {
   }
   runs(id: string) { return this.request('GET', `/v1/agents/${id}/runs`); }
   run(id: string, runId: string) { return this.request('GET', `/v1/agents/${id}/runs/${runId}`); }
+
+  /** Invoke a registered operation through Pact. This credential never signs an onchain action. */
+  async proxy(agentId: string, serviceId: string, method: 'GET'|'POST'|'PUT'|'PATCH'|'DELETE',
+    path: string, payload?: unknown, approvalId?: string): Promise<unknown> {
+    if (!/^[0-9a-f-]{36}$/i.test(agentId) || !/^[0-9a-f-]{36}$/i.test(serviceId) ||
+        !/^\/(?!\/)[A-Za-z0-9/_~.:-]*$/.test(path) || path.includes('..'))
+      throw new Error('Invalid proxy route');
+    const url = new URL(`/v2/proxy/${agentId}/${serviceId}${path}`, this.baseUrl);
+    const response = await this.fetcher(url, { method, redirect: 'error', signal: AbortSignal.timeout(15_000),
+      headers: { Authorization: `Bearer ${this.token}`,
+        ...(payload === undefined ? {} : { 'Content-Type': 'application/json' }),
+        ...(approvalId ? { 'X-Pact-Approval-Id': approvalId } : {}) },
+      ...(payload === undefined ? {} : { body: JSON.stringify(payload,
+        (_key, value: unknown) => typeof value === 'bigint' ? value.toString() : value) }) });
+    const raw = await response.text();
+    if (raw.length > 1_000_000) throw new Error('Pact proxy response too large');
+    const data: unknown = response.headers.get('content-type')?.includes('application/json') ?
+      JSON.parse(raw) : raw;
+    if (!response.ok) {
+      const code = typeof data === 'object' && data && 'error' in data ? String(data.error) :
+        `HTTP_${response.status}`;
+      throw new Error(`Pact proxy ${response.status}: ${code}`);
+    }
+    return data;
+  }
 }

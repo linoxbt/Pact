@@ -225,6 +225,38 @@ class PactClient:
     def run(self, agent_id: str, run_id: str) -> dict[str, Any]:
         return self._request("GET", f"/v1/agents/{uuid.UUID(agent_id)}/runs/{uuid.UUID(run_id)}")
 
+    def proxy(self, agent_id: str, service_id: str, method: str, path: str,
+              body: dict[str, Any] | None = None, approval_id: str | None = None) -> dict[str, Any]:
+        """Call a registered HTTP operation with a scoped integration key."""
+        if method not in {"GET", "POST", "PUT", "PATCH", "DELETE"}:
+            raise ValueError("invalid proxy method")
+        if not path.startswith("/") or path.startswith("//") or ".." in path or "?" in path or "#" in path:
+            raise ValueError("invalid proxy path")
+        route = f"/v2/proxy/{uuid.UUID(agent_id)}/{uuid.UUID(service_id)}{path}"
+        headers = {"Accept": "application/json"}
+        if not self.token:
+            raise ValueError("scoped integration key required")
+        headers["Authorization"] = f"Bearer {self.token}"
+        if approval_id:
+            headers["X-Pact-Approval-Id"] = str(uuid.UUID(approval_id))
+        payload = None
+        if body is not None:
+            headers["Content-Type"] = "application/json"
+            payload = json.dumps(body, separators=(",", ":")).encode()
+        req = Request(self.base_url + route, data=payload, headers=headers, method=method)
+        try:
+            with self.transport(req, timeout=self.timeout) as response:
+                data = response.read(1_000_001)
+                if len(data) > 1_000_000:
+                    raise ValueError("Pact proxy response too large")
+                return json.loads(data)
+        except HTTPError as exc:
+            try:
+                error = json.loads(exc.read(4096)).get("error", "HTTP_ERROR")
+            except (ValueError, AttributeError):
+                error = "HTTP_ERROR"
+            raise PactApiError(exc.code, error) from exc
+
     def quote_transfer(self, intent: TransferIntent) -> dict[str, Any]:
         return self._request("POST", "/v1/transfers/quote", intent.wire())
 

@@ -4,7 +4,8 @@ import helmet from '@fastify/helmet';
 import { encodeFunctionData, type Address, type Hex, type PublicClient } from 'viem';
 import { CommitmentLedgerAbi, ObligationManagerAbi, PactAccountAbi,
   ReceiptRegistryAbi } from '@pact/abis';
-import { AuthError, AuthService, OperationStore, jsonSafe, type Database } from '@pact/operations';
+import { AuthError, AuthService, OperationStore, jsonSafe, type Database,
+  type OwnerAuthService } from '@pact/operations';
 import { hashObligationTerms, hashTransferIntent } from '@pact/schemas';
 import { canonicalGatewayPolicy, gatewayPolicySchema, hashGatewayPolicy,
   policyApprovalPayload } from '@pact/policies';
@@ -16,7 +17,8 @@ import { registerEvidenceRoutes } from './evidence.js';
 import { registerAgentRoutes } from './agents.js';
 import { registerRunRoutes } from './runs.js';
 import { registerBillingRoutes, type BillingConfig } from './billing.js';
-import type { CredentialCipher, EvidenceStore } from '@pact/security';
+import type { CredentialCipher, DeploymentSecretCipher, EvidenceStore } from '@pact/security';
+import { registerControlPlaneRoutes } from './control-plane.js';
 
 export type ApiContext = Readonly<{
   database: Database;
@@ -26,9 +28,11 @@ export type ApiContext = Readonly<{
   operations: OperationStore;
   allowedOrigin: string | string[];
   evidence?: EvidenceStore;
-  credentials?: CredentialCipher;
+  credentials?: CredentialCipher | DeploymentSecretCipher;
   customModelEndpoints?: string[];
   billing?: BillingConfig;
+  ownerAuth?: OwnerAuthService;
+  accountFactory?: `0x${string}`;
 }>;
 
 const body = async <T>(requestBody: unknown, schema: z.ZodType<T>): Promise<T> => schema.parse(requestBody);
@@ -49,14 +53,18 @@ const requireGrantReader = async (ctx: ApiContext, header: string | undefined, g
 };
 
 export async function createApi(ctx: ApiContext): Promise<FastifyInstance> {
-  const app = Fastify({ logger: { redact: ['req.headers.authorization', 'req.headers.cookie'] },
+  const app = Fastify({ logger: { redact: ['req.headers.authorization', 'req.headers.cookie'],
+    serializers: { req: request => ({ method: request.method,
+      url: request.url?.split('?')[0] ?? '', host: request.headers.host ?? '' }) } },
     bodyLimit: 256 * 1024 });
   await app.register(helmet);
   await app.register(cors, { origin: ctx.allowedOrigin, methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'],
-    allowedHeaders: ['authorization', 'content-type', 'x-idempotency-key'] });
+    allowedHeaders: ['authorization', 'content-type', 'x-idempotency-key', 'x-pact-evidence-type'] });
   app.setErrorHandler((cause, _request, reply) => {
     if (cause instanceof ZodError) return reply.code(400).send({ error: 'INVALID_INPUT', issues: cause.issues });
     if (cause instanceof AuthError) return reply.code(cause.statusCode).send({ error: cause.message });
+    if (cause instanceof SyntaxError && 'statusCode' in cause && cause.statusCode === 400)
+      return reply.code(400).send({ error: 'INVALID_JSON' });
     app.log.error(cause);
     return reply.code(500).send({ error: 'INTERNAL_ERROR' });
   });
@@ -166,20 +174,21 @@ export async function createApi(ctx: ApiContext): Promise<FastifyInstance> {
   app.post('/v1/transfers/quote', async request => {
     const intent = await body(request.body, transferIntent);
     await requireAgent(ctx, request.headers.authorization, intent.grantId, 'quote');
-    return respond(await ctx.pact.previewTransfer(intent));
+    return respond(await (await ctx.pact.forGrant(intent.grantId)).previewTransfer(intent));
   });
   app.post('/v1/transfers/prepare-reservation', async request => {
     const input = await body(request.body, z.object({ intent: transferIntent, idempotencyKey: operationKey }).strict());
     const session = await requireAgent(ctx, request.headers.authorization, input.intent.grantId);
-    const { quote, decision } = await ctx.pact.previewTransfer(input.intent);
+    const grantPact = await ctx.pact.forGrant(input.intent.grantId);
+    const { quote, decision } = await grantPact.previewTransfer(input.intent);
     if (decision.result === 'DENY') error(403, decision.reason);
     const block = await ctx.rpc.getBlock();
     const grant = await ctx.pact.grant(input.intent.grantId);
     const expiry = [input.intent.deadline, grant.expiresAt, block.timestamp + 3600n]
       .reduce((smallest, value) => value < smallest ? value : smallest);
     if (expiry <= block.timestamp) error(400, 'INTENT_EXPIRED');
-    const call = await ctx.pact.prepareReserveTransfer(input.intent, expiry);
-    const actionHash = hashTransferIntent(await ctx.rpc.getChainId(), ctx.pact.addresses.account, input.intent);
+    const call = await grantPact.prepareReserveTransfer(input.intent, expiry);
+    const actionHash = hashTransferIntent(await ctx.rpc.getChainId(), grantPact.addresses.account, input.intent);
     const operation = await ctx.operations.prepare({ principal: session.principal, actor: session.address,
       kind: 'transfer-reservation', idempotencyKey: input.idempotencyKey, actionHash,
       targetAddress: call.address, expectedEvent: 'Reserved', grantId: input.intent.grantId });
@@ -190,10 +199,11 @@ export async function createApi(ctx: ApiContext): Promise<FastifyInstance> {
     const input = await body(request.body, z.object({ intent: transferIntent, reservationId: id,
       approval: hex.optional(), idempotencyKey: operationKey }).strict());
     const session = await requireAgent(ctx, request.headers.authorization, input.intent.grantId);
-    const proof = await ctx.pact.verifyTransfer(input.intent, input.reservationId, input.approval);
+    const grantPact = await ctx.pact.forGrant(input.intent.grantId);
+    const proof = await grantPact.verifyTransfer(input.intent, input.reservationId, input.approval);
     if (!proof.valid) error(403, proof.reason);
-    const call = ctx.pact.prepareExecuteTransfer(input.intent, input.reservationId, input.approval);
-    const actionHash = hashTransferIntent(await ctx.rpc.getChainId(), ctx.pact.addresses.account, input.intent);
+    const call = grantPact.prepareExecuteTransfer(input.intent, input.reservationId, input.approval);
+    const actionHash = hashTransferIntent(await ctx.rpc.getChainId(), grantPact.addresses.account, input.intent);
     const operation = await ctx.operations.prepare({ principal: session.principal, actor: session.address,
       kind: 'transfer-execution', idempotencyKey: input.idempotencyKey, actionHash,
       targetAddress: call.address, expectedEvent: 'TransferExecuted', grantId: input.intent.grantId,
@@ -204,9 +214,10 @@ export async function createApi(ctx: ApiContext): Promise<FastifyInstance> {
     const input = await body(request.body, z.object({ intent: transferIntent, reservationId: id }).strict());
     const { session } = await requireGrantReader(ctx, request.headers.authorization, input.intent.grantId);
     if (session.kind !== 'principal') error(403, 'PRINCIPAL_ONLY');
-    const proof = await ctx.pact.verifyTransfer(input.intent, input.reservationId);
+    const grantPact = await ctx.pact.forGrant(input.intent.grantId);
+    const proof = await grantPact.verifyTransfer(input.intent, input.reservationId);
     if (proof.reason !== 'APPROVAL_REQUIRED') error(403, proof.reason === 'OK' ? 'APPROVAL_NOT_REQUIRED' : proof.reason);
-    return respond({ payload: await ctx.pact.transferApprovalPayload(input.intent, input.reservationId),
+    return respond({ payload: await grantPact.transferApprovalPayload(input.intent, input.reservationId),
       intent: input.intent, reservationId: input.reservationId });
   });
 
@@ -282,14 +293,16 @@ export async function createApi(ctx: ApiContext): Promise<FastifyInstance> {
     const session = await ctx.auth.authenticate(request.headers.authorization, 'prepare');
     const input = await body(request.body, z.object({ txHash: bytes32 }).strict());
     const operation = await ctx.operations.get((request.params as { id: string }).id, session.principal);
-    if (!operation || operation.actor.toLowerCase() !== session.address.toLowerCase())
+    if (!operation || operation.actor.toLowerCase() !== session.address.toLowerCase() ||
+        (session.kind === 'agent' && operation.grantId !== session.grantId))
       throw new AuthError('OPERATION_NOT_FOUND', 404);
     return respond(await ctx.operations.markSubmitted(operation.id, session.principal, input.txHash));
   });
   app.get('/v1/operations/:id', async request => {
     const session = await ctx.auth.authenticate(request.headers.authorization, 'read');
     const operation = await ctx.operations.get((request.params as { id: string }).id, session.principal);
-    if (!operation || (session.kind === 'agent' && operation.actor.toLowerCase() !== session.address.toLowerCase()))
+    if (!operation || (session.kind === 'agent' && (operation.actor.toLowerCase() !== session.address.toLowerCase() ||
+        operation.grantId !== session.grantId)))
       error(404, 'OPERATION_NOT_FOUND');
     return respond(operation);
   });
@@ -297,9 +310,10 @@ export async function createApi(ctx: ApiContext): Promise<FastifyInstance> {
     const session = await ctx.auth.authenticate(request.headers.authorization, 'read');
     const result = await ctx.database.query(
       `SELECT id,principal,actor,kind,action_hash,grant_id,tx_hash,state,error_code,created_at,updated_at
-       FROM pact_operations WHERE principal=$1 AND ($2::text='principal' OR actor=$3)
+       FROM pact_operations WHERE principal=$1 AND ($2::text='principal' OR (actor=$3 AND grant_id=$4))
        ORDER BY created_at DESC LIMIT 100`,
-      [session.principal.toLowerCase(), session.kind, session.address.toLowerCase()]);
+      [session.principal.toLowerCase(), session.kind, session.address.toLowerCase(),
+        session.grantId?.toString() ?? null]);
     return respond({ operations: result.rows });
   });
   registerApprovalRoutes(app, ctx);
@@ -307,5 +321,6 @@ export async function createApi(ctx: ApiContext): Promise<FastifyInstance> {
   registerAgentRoutes(app, ctx);
   registerRunRoutes(app, ctx);
   registerBillingRoutes(app, ctx);
+  if (ctx.ownerAuth) registerControlPlaneRoutes(app, ctx);
   return app;
 }

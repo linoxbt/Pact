@@ -8,5 +8,6 @@
   "manager": "0x391e03b317fd7744ba2fc8c9befa7dd91e1bdc5f",
   "vault": "0xd3cbcf8aa5e5996a6100b0d7df5a283b5cd62bdc",
   "receipts": "0xce20648594982de1496d1edb7f2acebe62503de4",
-  "deployedAt": "2026-09-24T10:51:17.099Z"
+  "deployedAt": "2026-09-24T10:51:17.099Z",
+  "accountFactory": "0x8028e80ca3006fc620bcb0c39bcc2e8968ae0802"
 }

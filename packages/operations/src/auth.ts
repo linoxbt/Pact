@@ -33,6 +33,10 @@ export class AuthService {
   async challenge(address: string, grantId?: bigint) {
     if (!isAddress(address)) throw new AuthError('Invalid address', 400);
     if (grantId !== undefined && grantId <= 0n) throw new AuthError('Invalid grant', 400);
+    const recent = await this.database.query<{ count: string }>(
+      `SELECT count(*)::text AS count FROM pact_challenges
+       WHERE address=$1 AND expires_at>now() - interval '5 minutes'`, [address.toLowerCase()]);
+    if (Number(recent.rows[0]?.count ?? 0) >= 5) throw new AuthError('CHALLENGE_RATE_LIMITED', 429);
     const nonce = randomUUID();
     const expiresAt = new Date(Date.now() + 5 * 60_000);
     const message = [
@@ -123,6 +127,12 @@ export class AuthService {
       const grant = await this.pact.grant(grantId);
       if (!grant.active || grant.agent.toLowerCase() !== row.address ||
           grant.principal.toLowerCase() !== row.principal) throw new AuthError('Agent authority changed');
+      const registered = await this.database.query<{ status: string; operational_address: string }>(
+        'SELECT status,operational_address FROM pact_agents WHERE grant_id=$1 AND principal=$2',
+        [grantId.toString(), row.principal]);
+      if (registered.rows[0] && (registered.rows[0].status !== 'active' ||
+          registered.rows[0].operational_address.toLowerCase() !== row.address))
+        throw new AuthError('Agent disabled or rotated');
     }
     return { address: row.address as Address, principal: row.principal as Address, grantId,
       kind: row.kind, credential: 'wallet' };

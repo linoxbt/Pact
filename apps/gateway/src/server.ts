@@ -1,9 +1,11 @@
 import Fastify, { type FastifyInstance } from 'fastify';
 import helmet from '@fastify/helmet';
+import cors from '@fastify/cors';
 import { AuthError, type AuthService, type Database } from '@pact/operations';
 import { canonicalGatewayPolicy, hashGatewayPolicy, type GatewayPolicy } from '@pact/policies';
 import type { PactClient } from '@pact/sdk-ts';
 import type { SecretProvider } from '@pact/security';
+import { registerProxy, type ProxyContext } from './proxy.js';
 
 export type GatewayContext = Readonly<{
   database: Database;
@@ -11,24 +13,33 @@ export type GatewayContext = Readonly<{
   auth: AuthService;
   secrets: SecretProvider;
   fetcher?: typeof fetch;
+  proxy?: ProxyContext;
+  allowedOrigin?: string;
 }>;
 
 type PolicyRow = { policy_hash: string; policy: GatewayPolicy };
 const slug = /^[A-Za-z0-9][A-Za-z0-9_.-]{0,99}$/;
 
 export async function createGateway(ctx: GatewayContext): Promise<FastifyInstance> {
-  const app = Fastify({ logger: { redact: ['req.headers.authorization', 'req.headers.cookie'] } });
+  const app = Fastify({ logger: { redact: ['req.headers.authorization', 'req.headers.cookie'],
+    serializers: { req: request => ({ method: request.method,
+      url: request.url?.split('?')[0] ?? '', host: request.headers.host ?? '' }) } },
+    bodyLimit: 256 * 1024 });
   await app.register(helmet);
+  if (ctx.allowedOrigin) await app.register(cors, { origin: ctx.allowedOrigin,
+    methods: ['GET','POST','PUT','PATCH','DELETE'],
+    allowedHeaders: ['Authorization','Content-Type','X-Pact-Approval-Id'],
+    exposedHeaders: ['X-Pact-Request-Id'] });
   app.setErrorHandler((cause, _request, reply) => {
     if (cause instanceof AuthError) return reply.code(cause.statusCode).send({ error: cause.message });
     app.log.error(cause);
     return reply.code(502).send({ error: 'UPSTREAM_UNAVAILABLE' });
   });
   app.get('/health', async () => ({ status: 'ok' }));
+  if (ctx.proxy) registerProxy(app, ctx.proxy);
   app.get('/ready', async (_request, reply) => {
     try {
       await ctx.database.query('SELECT 1');
-      await ctx.secrets.githubToken();
       return { status: 'ready' };
     } catch { return reply.code(503).send({ status: 'unavailable' }); }
   });

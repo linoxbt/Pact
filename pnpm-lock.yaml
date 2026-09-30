@@ -157,6 +157,9 @@ importers:
       '@aws-sdk/client-secrets-manager':
         specifier: 3.1110.0
         version: 3.1110.0
+      '@fastify/cors':
+        specifier: 11.3.0
+        version: 11.3.0
       '@fastify/helmet':
         specifier: 13.1.1
         version: 13.1.1

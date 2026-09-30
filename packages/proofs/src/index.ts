@@ -22,7 +22,8 @@ export async function verifyTransferReservation(
 ): Promise<Verification> {
   const chainId = await client.getChainId();
   const block = await client.getBlock();
-  const [configuredRegistry, accountRegistry, accountLedger, accountPrincipal, active, grant, reservation] =
+  const [configuredRegistry, accountRegistry, accountLedger, accountPrincipal, active, grant, reservation,
+    nonceUsed] =
     await Promise.all([
       client.readContract({ address: addresses.ledger, abi: ledgerAbi, functionName: 'registry' }),
       client.readContract({ address: addresses.account, abi: accountAbi, functionName: 'registry' }),
@@ -31,6 +32,7 @@ export async function verifyTransferReservation(
       client.readContract({ address: addresses.registry, abi: registryAbi, functionName: 'isActive', args: [intent.grantId] }),
       client.readContract({ address: addresses.registry, abi: registryAbi, functionName: 'getGrant', args: [intent.grantId] }),
       client.readContract({ address: addresses.ledger, abi: ledgerAbi, functionName: 'reservations', args: [reservationId] }),
+      client.readContract({ address: addresses.account, abi: accountAbi, functionName: 'usedNonces', args: [intent.nonce] }),
     ]);
   const [reservedGrantId, reservedHash, reservedAmount, reservedExpiry, consumed, liability] = reservation;
   if (!eq(configuredRegistry, addresses.registry) || !eq(accountRegistry, addresses.registry) ||
@@ -38,6 +40,7 @@ export async function verifyTransferReservation(
   if (!active || !eq(grant.principal, accountPrincipal) || !eq(grant.account, addresses.account) ||
       !eq(grant.agent, intent.agent) || !eq(grant.token, intent.token) || !eq(grant.recipient, intent.to) ||
       !eq(grant.policyHash, intent.policyHash)) return invalid('GRANT_MISMATCH');
+  if (nonceUsed) return invalid('NONCE_USED');
   if (intent.amount === 0n || intent.amount > grant.singleLimit || intent.deadline <= block.timestamp ||
       intent.deadline > grant.expiresAt) return invalid('ACTION_OUT_OF_BOUNDS');
   if (reservedGrantId !== intent.grantId || consumed || liability ||

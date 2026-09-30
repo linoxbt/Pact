@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { PactClient } from '../dist/index.js';
+import { PactClient, PactHttpClient } from '../dist/index.js';
 
 const addresses = {
   registry: '0x0000000000000000000000000000000000000001',
@@ -24,4 +24,15 @@ test('SDK prepares exact reserve and execute calls without holding a signer', as
   assert.equal(execute.address, addresses.account);
   assert.equal(execute.args[1], 7n);
   assert.equal(execute.args[2], '0x');
+});
+
+test('HTTP SDK serializes bigint transfer intents as decimal strings', async () => {
+  const sdk = new PactHttpClient('https://pact.example', 'agent-token', async (_url, init) => {
+    const body = JSON.parse(init.body);
+    assert.equal(body.grantId, '1');
+    assert.equal(body.amount, '100');
+    assert.equal(body.nonce, '3');
+    return new Response(JSON.stringify({ decision: 'ALLOW' }));
+  });
+  assert.deepEqual(await sdk.quoteTransfer(intent), { decision: 'ALLOW' });
 });

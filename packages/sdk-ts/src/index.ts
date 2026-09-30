@@ -20,6 +20,15 @@ export type PactAddresses = Readonly<{
 export class PactClient {
   constructor(readonly rpc: PublicClient, readonly addresses: PactAddresses) {}
 
+  forAccount(account: Address): PactClient {
+    return new PactClient(this.rpc, { ...this.addresses, account });
+  }
+
+  async forGrant(grantId: bigint): Promise<PactClient> {
+    const grant = await this.grant(grantId);
+    return this.forAccount(grant.account);
+  }
+
   async grant(id: bigint): Promise<GrantView> {
     const [g, active] = await Promise.all([
       this.rpc.readContract({ address: this.addresses.registry, abi: registryAbi,

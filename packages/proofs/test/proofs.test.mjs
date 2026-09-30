@@ -26,6 +26,7 @@ test('reservation verifier rejects tampered amount with Pact API absent', async 
       if (functionName === 'isActive') return true;
       if (functionName === 'reservations') return reservation;
       if (functionName === 'principal') return principal;
+      if (functionName === 'usedNonces') return false;
       if (functionName === 'registry') return registry;
       if (functionName === 'ledger') return ledger;
       throw new Error(`${address}: ${functionName}`);
@@ -41,6 +42,10 @@ test('reservation verifier rejects tampered amount with Pact API absent', async 
   } };
   assert.equal((await verifyTransferReservation(approvalClient,
     { registry, ledger, account }, intent, 1n)).reason, 'APPROVAL_REQUIRED');
+  const replayClient = { ...client, readContract: async args =>
+    args.functionName === 'usedNonces' ? true : client.readContract(args) };
+  assert.equal((await verifyTransferReservation(replayClient,
+    { registry, ledger, account }, intent, 1n)).reason, 'NONCE_USED');
 });
 
 test('receipt verifier detects disclosure mismatch', async () => {

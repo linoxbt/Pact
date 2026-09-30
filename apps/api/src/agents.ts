@@ -9,7 +9,7 @@ const label = z.string().trim().min(2).max(80);
 const description = z.string().trim().max(1000);
 export const agentKeyScope = z.enum(['read', 'quote', 'prepare', 'approval.request',
   'provider.read', 'evidence.write', 'runs.trigger']);
-const keyRequest = z.object({ name: label, scopes: z.array(agentKeyScope).min(1).max(6),
+const keyRequest = z.object({ name: label, scopes: z.array(agentKeyScope).min(1).max(agentKeyScope.options.length),
   expiresAt: z.iso.datetime({ offset: true }) }).strict();
 type AgentRow = { id: string; principal: string; grant_id: string; operational_address: string;
   name: string; description: string; status: string };

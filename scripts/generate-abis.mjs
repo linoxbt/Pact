@@ -3,7 +3,7 @@ import { resolve } from 'node:path';
 
 const root = resolve(import.meta.dirname, '..');
 const contracts = [
-  'AuthorityRegistry', 'CommitmentLedger', 'PactAccount', 'ObligationManager',
+  'AuthorityRegistry', 'CommitmentLedger', 'PactAccount', 'PactAccountFactory', 'ObligationManager',
   'SettlementVault', 'ReceiptRegistry',
 ];
 const output = [

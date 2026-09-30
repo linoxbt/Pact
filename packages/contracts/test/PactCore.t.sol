@@ -4,6 +4,7 @@ pragma solidity ^0.8.28;
 import {AuthorityRegistry} from "../src/AuthorityRegistry.sol";
 import {CommitmentLedger} from "../src/CommitmentLedger.sol";
 import {PactAccount} from "../src/PactAccount.sol";
+import {PactAccountFactory} from "../src/PactAccountFactory.sol";
 
 interface Vm {
     function addr(uint256 privateKey) external returns (address);
@@ -24,6 +25,18 @@ contract MockToken {
         require(balanceOf[msg.sender] >= amount, "balance");
         balanceOf[msg.sender] -= amount;
         balanceOf[to] += amount;
+        return true;
+    }
+}
+
+contract FalseTransferToken {
+    mapping(address => uint256) public balanceOf;
+
+    function mint(address to, uint256 amount) external {
+        balanceOf[to] += amount;
+    }
+
+    function transfer(address, uint256) external pure returns (bool) {
         return true;
     }
 }
@@ -67,6 +80,22 @@ contract PactCoreTest {
             2,
             POLICY
         );
+    }
+
+    function testFactoryCreatesSeparatePrincipalAccounts() public {
+        PactAccountFactory factory = new PactAccountFactory(registry, ledger);
+        vm.prank(principal);
+        address first = factory.createAccount();
+        vm.prank(child);
+        address second = factory.createAccount();
+        require(first != second, "shared account");
+        require(factory.accountOf(principal) == first, "principal account");
+        require(factory.accountOf(child) == second, "child account");
+        require(PactAccount(first).principal() == principal, "principal owner");
+        require(PactAccount(second).principal() == child, "child owner");
+        vm.expectRevert();
+        vm.prank(principal);
+        factory.createAccount();
     }
 
     function _intent(uint256 grantId, address actor, uint256 amount, uint256 nonce)
@@ -114,6 +143,32 @@ contract PactCoreTest {
         vm.expectRevert();
         ledger.reserve(grant, secondHash, second.amount, second.deadline);
         require(ledger.available(grant) == 1_000, "remaining capacity");
+    }
+
+    function testTokenReturningTrueWithoutPaymentCannotProduceExecutedReceipt() public {
+        FalseTransferToken falseToken = new FalseTransferToken();
+        falseToken.mint(address(account), 100);
+        vm.prank(principal);
+        uint256 grantId = registry.createRoot(
+            agent,
+            address(account),
+            address(falseToken),
+            address(0xBEEF),
+            100,
+            100,
+            100,
+            uint64(block.timestamp + 1 days),
+            0,
+            POLICY
+        );
+        PactAccount.TransferIntent memory intent = PactAccount.TransferIntent(
+            grantId, agent, address(falseToken), address(0xBEEF), 50, 94, uint64(block.timestamp + 1 hours), POLICY
+        );
+        uint256 reservationId = _reserve(intent, agent);
+        vm.prank(agent);
+        vm.expectRevert();
+        account.executeTransfer(intent, reservationId, "");
+        require(!account.usedNonces(94), "nonce must roll back");
     }
 
     function testApprovedTransferConsumesReservationAndNonce() public {

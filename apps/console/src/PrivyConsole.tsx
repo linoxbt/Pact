@@ -1,6 +1,7 @@
 import { PrivyProvider, useLinkWithPasskey, usePrivy, useWallets } from '@privy-io/react-auth';
 import { defineChain } from 'viem';
 import { App, type WalletAdapter } from './main.js';
+import { ControlConsole } from './ControlConsole.js';
 
 const appId = import.meta.env.VITE_PRIVY_APP_ID as string | undefined;
 const monadTestnet = defineChain({ id: 10143, name: 'Monad Testnet',
@@ -18,12 +19,14 @@ function WalletConsole() {
     logout: () => logout(),
     hasPasskey: user?.linkedAccounts.some(account => account.type === 'passkey') ?? false,
     createPasskey: () => linkWithPasskey({ name: 'Pact Console' }) };
-  return <App walletAdapter={walletAdapter}/>;
+  return window.location.pathname.startsWith('/legacy') ? <App walletAdapter={walletAdapter}/> :
+    <ControlConsole/>;
 }
 
 export default function PrivyConsole() {
-  if (!appId) return <App/>;
+  if (!appId) return <p role="alert">Pact sign in is unavailable: VITE_PRIVY_APP_ID is missing.</p>;
   return <PrivyProvider appId={appId} config={{ loginMethods: ['email', 'wallet', 'passkey'],
     supportedChains: [monadTestnet], defaultChain: monadTestnet,
+    embeddedWallets: { ethereum: { createOnLogin: 'all-users' } },
     appearance: { theme: 'light', accentColor: '#245342', showWalletLoginFirst: false, walletChainType: 'ethereum-only' } }}><WalletConsole/></PrivyProvider>;
 }

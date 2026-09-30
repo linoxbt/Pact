@@ -8,6 +8,10 @@ interface IERC1271 {
     function isValidSignature(bytes32 hash, bytes calldata signature) external view returns (bytes4);
 }
 
+interface IERC20Balance {
+    function balanceOf(address owner) external view returns (uint256);
+}
+
 /// @notice Principal-funded account. Agents can only execute exact reserved ERC-20 transfers.
 contract PactAccount {
     error Unauthorized();
@@ -110,11 +114,20 @@ contract PactAccount {
         usedNonces[intent.nonce] = true;
         uint256 reservedAmount = ledger.consumeSpend(reservationId, intentHash);
         if (reservedAmount != intent.amount) revert InvalidAction();
+        if (intent.token.code.length == 0) revert TransferFailed();
+        uint256 accountBefore = IERC20Balance(intent.token).balanceOf(address(this));
+        uint256 recipientBefore = IERC20Balance(intent.token).balanceOf(intent.to);
         (bool success, bytes memory response) =
             intent.token.call(abi.encodeWithSelector(bytes4(0xa9059cbb), intent.to, intent.amount));
         if (!success || (response.length != 0 && (response.length != 32 || !abi.decode(response, (bool))))) {
             revert TransferFailed();
         }
+        uint256 accountAfter = IERC20Balance(intent.token).balanceOf(address(this));
+        uint256 recipientAfter = IERC20Balance(intent.token).balanceOf(intent.to);
+        if (
+            accountAfter > accountBefore || accountBefore - accountAfter != intent.amount
+                || recipientAfter < recipientBefore || recipientAfter - recipientBefore != intent.amount
+        ) revert TransferFailed();
         emit TransferExecuted(intent.grantId, reservationId, intentHash, intent.token, intent.to, intent.amount);
         entered = 0;
     }

@@ -1,5 +1,6 @@
 import { hashTypedData, keccak256, toBytes, type Address, type Hex } from 'viem';
 import { z } from 'zod';
+export * from './http.js';
 
 const repository = z.string().regex(/^[A-Za-z0-9_.-]{1,100}\/[A-Za-z0-9_.-]{1,100}$/);
 export const gatewayPolicySchema = z.object({

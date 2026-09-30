@@ -4,6 +4,7 @@ pragma solidity ^0.8.28;
 import {AuthorityRegistry} from "../src/AuthorityRegistry.sol";
 import {CommitmentLedger} from "../src/CommitmentLedger.sol";
 import {PactAccount} from "../src/PactAccount.sol";
+import {PactAccountFactory} from "../src/PactAccountFactory.sol";
 import {ObligationManager} from "../src/ObligationManager.sol";
 import {SettlementVault} from "../src/SettlementVault.sol";
 import {ReceiptRegistry} from "../src/ReceiptRegistry.sol";
@@ -35,6 +36,7 @@ contract Deploy {
         ledger = new CommitmentLedger();
         registry = new AuthorityRegistry(address(ledger));
         account = new PactAccount(principal, registry, ledger);
+        new PactAccountFactory(registry, ledger);
         manager = new ObligationManager(registry, ledger);
         vault = new SettlementVault(address(manager));
         receipts = new ReceiptRegistry(address(manager));
