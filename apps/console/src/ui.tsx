@@ -17,6 +17,7 @@ export function Icon({ name = 'arrow', size = 20 }: { name?: string; size?: numb
     check: <path d="m5 12 4 4L19 6"/>,
     copy: <><rect x="8" y="8" width="12" height="13" rx="2"/><path d="M16 8V3H3v13h5"/></>,
     menu: <path d="M4 6h16M4 12h16M4 18h16"/>,
+    panel: <><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M9 4v16"/></>,
     close: <path d="m6 6 12 12M6 18 18 6"/>,
     globe: <><circle cx="12" cy="12" r="9"/><ellipse cx="12" cy="12" rx="4" ry="9"/><path d="M3 12h18"/></>,
     lock: <><rect x="5" y="10" width="14" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3m-4 5v2"/></>,

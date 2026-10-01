@@ -65,6 +65,10 @@ export function ControlConsole() {
   const { linkWithPasskey } = useLinkWithPasskey();
   const [view, setView] = useState<View>('overview');
   const [menuOpen, setMenuOpen] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
+    try { return window.localStorage.getItem('pact:sidebar-collapsed') === 'true'; }
+    catch { return false; }
+  });
   const [account, setAccount] = useState<Item>();
   const [controlStatus, setControlStatus] = useState<ControlStatus>('idle');
   const [controlError, setControlError] = useState('');
@@ -194,6 +198,10 @@ export function ControlConsole() {
     const timer = setInterval(() => { void refreshActivity().catch(() => {}); }, 3000);
     return () => clearInterval(timer);
   }, [authenticated, view, activityFilters]);
+  useEffect(() => {
+    try { window.localStorage.setItem('pact:sidebar-collapsed', String(sidebarCollapsed)); }
+    catch { /* Navigation still works when storage is unavailable. */ }
+  }, [sidebarCollapsed]);
 
   const choose = (next: View) => { setView(next); setSelected(undefined); setMenuOpen(false); };
   const withReview = (title: string, summary: string[], action: () => Promise<void>) =>
@@ -213,17 +221,23 @@ export function ControlConsole() {
   const proxyUrl = exampleService && exampleAgent ?
     `${gatewayBase}/v2/proxy/${exampleAgent.id}/${exampleService.id}/health` :
     `${gatewayBase}/v2/proxy/AGENT_ID/SERVICE_ID/health`;
-  return <div className="cpShell">
+  return <div className={`cpShell ${sidebarCollapsed ? 'cpCollapsed' : ''}`}>
     <aside className={`cpSidebar ${menuOpen ? 'open' : ''}`}><div className="cpBrand"><Brand/><button className="cpClose" onClick={() => setMenuOpen(false)} aria-label="Close menu">×</button></div>
-      <span className="cpNavLabel">WORKSPACE</span><nav aria-label="Console navigation">{nav.map(item =>
+      <div className="cpWorkspaceIdentity"><span className="cpWorkspaceAvatar">P</span><div className="cpWorkspaceIdentityText">Pact workspace<small><i className="cpStatusDot"/> Monad testnet</small></div><span className="cpWorkspaceVersion">01</span></div>
+      <span className="cpNavLabel">WORKSPACE</span><nav id="pact-console-nav" aria-label="Console navigation">{nav.map(item =>
         <button key={item.id} className={view === item.id ? 'active' : ''} onClick={() => choose(item.id)}
-          aria-current={view === item.id ? 'page' : undefined}><Icon name={item.icon} size={18}/>{item.label}
+          aria-current={view === item.id ? 'page' : undefined} aria-label={item.label}
+          title={sidebarCollapsed ? item.label : undefined}><Icon name={item.icon} size={18}/><span className="cpNavText">{item.label}</span>
           {item.id === 'approvals' && approvals.filter(value => value.state === 'pending').length > 0 &&
             <em>{approvals.filter(value => value.state === 'pending').length}</em>}</button>)}</nav>
-      <div className="cpSidebarFoot"><a href="/docs">Developer docs ↗</a><a href="/explorer">Public Explorer ↗</a>
-        <a href="/legacy">Existing Monad grants ↗</a></div></aside>
+      <div className="cpSidebarFoot"><a href="/docs" aria-label="Developer docs" title={sidebarCollapsed ? 'Developer docs' : undefined}><Icon name="book" size={17}/><span className="cpFootText">Developer docs</span><Icon name="external" size={13}/></a>
+        <a href="/explorer" aria-label="Public Explorer" title={sidebarCollapsed ? 'Public Explorer' : undefined}><Icon name="globe" size={17}/><span className="cpFootText">Public Explorer</span><Icon name="external" size={13}/></a>
+        <a href="/legacy" aria-label="Existing Monad grants" title={sidebarCollapsed ? 'Existing Monad grants' : undefined}><Icon name="shield" size={17}/><span className="cpFootText">Existing Monad grants</span><Icon name="external" size={13}/></a>
+        <div className="cpSidebarAccount" title={sidebarCollapsed ? (account?.principalAddress ?? 'Pact account') : undefined}><span><Icon name="wallet" size={18}/></span><div className="cpAccountText">{account?.principalAddress ? short(account.principalAddress) : 'Pact account'}<small>{account?.verificationStatus === 'verified' ? 'Verified owner' : authenticated ? 'Account setup' : 'Sign in to get started'}</small></div></div>
+      </div></aside>
     {menuOpen && <button className="cpBackdrop" aria-label="Close navigation" onClick={() => setMenuOpen(false)}/>}
     <div className="cpMain"><header className="cpTopbar"><button className="cpMenu" onClick={() => setMenuOpen(true)} aria-label="Open navigation"><Icon name="menu"/></button>
+      <button className="cpSidebarToggle" type="button" aria-label={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'} aria-controls="pact-console-nav" aria-expanded={!sidebarCollapsed} title={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'} onClick={() => setSidebarCollapsed(value => !value)}><Icon name="panel" size={18}/></button>
       <span>PACT <b>/</b> {nav.find(item => item.id === view)?.label}</span><div className="cpTopActions"><span className="cpLive"><i/> CONTROL PLANE</span>
       {authenticated ? <button onClick={() => void logout()}>Sign out</button> : <button className="cpPrimary" onClick={() => login()}>Sign in</button>}</div></header>
       <main className="cpContent"><div className="cpPageHead"><div><span className="cpEyebrow">PACT / {view.toUpperCase()}</span>
