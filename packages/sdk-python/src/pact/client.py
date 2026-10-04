@@ -226,7 +226,7 @@ class PactClient:
         return self._request("GET", f"/v1/agents/{uuid.UUID(agent_id)}/runs/{uuid.UUID(run_id)}")
 
     def proxy(self, agent_id: str, service_id: str, method: str, path: str,
-              body: dict[str, Any] | None = None, approval_id: str | None = None) -> dict[str, Any]:
+              body: dict[str, Any] | None = None, approval_id: str | None = None) -> dict[str, Any] | str:
         """Call a registered HTTP operation with a scoped integration key."""
         if method not in {"GET", "POST", "PUT", "PATCH", "DELETE"}:
             raise ValueError("invalid proxy method")
@@ -249,6 +249,9 @@ class PactClient:
                 data = response.read(1_000_001)
                 if len(data) > 1_000_000:
                     raise ValueError("Pact proxy response too large")
+                content_type = response.headers.get("Content-Type", "")
+                if content_type.lower().startswith("text/plain"):
+                    return data.decode("utf-8")
                 return json.loads(data)
         except HTTPError as exc:
             try:

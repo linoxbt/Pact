@@ -1510,6 +1510,32 @@ export const ObligationManagerAbi = [
   },
   {
     "type": "function",
+    "name": "ARBITRATION_TIMEOUT",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "ARBITRATOR_TIMEOUT_VERDICT",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "bytes32",
+        "internalType": "bytes32"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
     "name": "TERMS_TYPEHASH",
     "inputs": [],
     "outputs": [
@@ -1951,6 +1977,19 @@ export const ObligationManagerAbi = [
         "name": "verdictHash",
         "type": "bytes32",
         "internalType": "bytes32"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "resolveArbitratorTimeout",
+    "inputs": [
+      {
+        "name": "id",
+        "type": "uint256",
+        "internalType": "uint256"
       }
     ],
     "outputs": [],

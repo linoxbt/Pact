@@ -7,6 +7,7 @@ import { hashObligationTerms, hashTransferIntent, obligationTermsTypes, pactDoma
   type TransferIntent } from '@pact/schemas';
 import { verifyObligationReservation, verifyReceiptAnchor, verifyTransferReservation } from '@pact/proofs';
 export { PactHttpClient } from './http.js';
+export { PactControlClient } from './control.js';
 
 export type PactAddresses = Readonly<{
   registry: Address;

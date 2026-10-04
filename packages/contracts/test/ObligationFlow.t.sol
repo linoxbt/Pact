@@ -176,6 +176,24 @@ contract ObligationFlowTest {
         require(ledger.available(grantId) == 15_000, "liability released");
     }
 
+    function testMissingArbitratorEventuallyRefundsChallengedEscrow() public {
+        uint256 id = _create();
+        _fund(id);
+        vm.prank(provider);
+        manager.submitEvidence(id, keccak256("delivery"));
+        vm.prank(verifier);
+        manager.verify(id, true, keccak256("initial verdict"));
+        vm.prank(principal);
+        manager.challenge(id);
+        vm.expectRevert();
+        manager.resolveArbitratorTimeout(id);
+        vm.warp(block.timestamp + 32 days);
+        manager.resolveArbitratorTimeout(id);
+        manager.finalize(id);
+        require(token.balanceOf(principal) == 15_000, "principal refunded after arbitration timeout");
+        require(receipts.getReceipt(id).verdictHash == manager.ARBITRATOR_TIMEOUT_VERDICT(), "timeout verdict anchored");
+    }
+
     function testChangedTermsCannotConsumeReservation() public {
         ObligationManager.Terms memory terms = _terms(ledger.nextReservationId());
         bytes32 digest = manager.hashTerms(terms);

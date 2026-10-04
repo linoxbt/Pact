@@ -11,8 +11,9 @@ HASH = "0x" + "b" * 64
 
 
 class Response:
-    def __init__(self, body):
-        self.body = io.BytesIO(json.dumps(body).encode())
+    def __init__(self, body, content_type="application/json"):
+        self.body = io.BytesIO(body.encode() if isinstance(body, str) else json.dumps(body).encode())
+        self.headers = {"Content-Type": content_type}
 
     def __enter__(self):
         return self
@@ -43,6 +44,15 @@ class ClientTests(unittest.TestCase):
     def test_rejects_insecure_remote_url(self):
         with self.assertRaises(ValueError):
             PactClient("http://pact.example")
+
+    def test_proxy_accepts_text_response(self):
+        def transport(*_args, **_kwargs):
+            return Response("healthy", "text/plain; charset=utf-8")
+
+        client = PactClient("https://pact.example", "pat_test", transport=transport)
+        self.assertEqual(client.proxy("00000000-0000-4000-8000-000000000001",
+                                      "00000000-0000-4000-8000-000000000002",
+                                      "GET", "/health"), "healthy")
 
     def test_reports_api_error_without_exposing_token(self):
         def transport(*_args, **_kwargs):

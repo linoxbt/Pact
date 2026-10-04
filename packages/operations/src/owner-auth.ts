@@ -1,10 +1,10 @@
-import { createHash, createPublicKey, randomUUID, verify as verifySignature, type JsonWebKey } from 'node:crypto';
+import { createHash, createPublicKey, randomBytes, randomUUID, verify as verifySignature, type JsonWebKey } from 'node:crypto';
 import { isAddress, isHex, type Address, type Hex, type PublicClient } from 'viem';
 import { AuthError } from './auth.js';
 import type { Database } from './db.js';
 
 export type Owner = Readonly<{ id: string; did: string; principalAddress: Address | null;
-  principalStatus: 'verified' | 'unverified' }>;
+  principalStatus: 'verified' | 'account_assigned' | 'unverified' }>;
 type JwtClaims = { sub: string; aud: string; iss: string; exp: number; iat: number };
 type UserRow = { id: string; privy_did: string; principal_address: string | null;
   principal_status: Owner['principalStatus'] };
@@ -57,11 +57,19 @@ export class OwnerAuthService {
   async authenticate(header: string | undefined): Promise<Owner> {
     if (!header?.startsWith('Bearer ')) throw new AuthError('OWNER_TOKEN_REQUIRED');
     const identity = await this.verifier.verify(header.slice(7));
-    const result = await this.database.query<UserRow>(
-      `INSERT INTO pact_users(id,privy_did) VALUES ($1,$2)
+    const existing = await this.database.query<UserRow>(
+      'SELECT * FROM pact_users WHERE privy_did=$1', [identity.did]);
+    let user = existing.rows[0] ?? (await this.database.query<UserRow>(
+      `INSERT INTO pact_users(id,privy_did,principal_address,principal_status)
+       VALUES ($1,$2,$3,'account_assigned')
        ON CONFLICT (privy_did) DO UPDATE SET updated_at=pact_users.updated_at RETURNING *`,
-      [randomUUID(), identity.did]);
-    const user = result.rows[0]!;
+      [randomUUID(), identity.did, `0x${randomBytes(20).toString('hex')}`])).rows[0]!;
+    // Upgrade users created before account-assigned principals were introduced.
+    if (!user.principal_address) user = (await this.database.query<UserRow>(
+      `UPDATE pact_users SET principal_address=$2,principal_status='account_assigned',updated_at=now()
+       WHERE id=$1 AND principal_address IS NULL RETURNING *`,
+      [user.id, `0x${randomBytes(20).toString('hex')}`])).rows[0] ??
+      (await this.database.query<UserRow>('SELECT * FROM pact_users WHERE id=$1', [user.id])).rows[0]!;
     return { id: user.id, did: user.privy_did,
       principalAddress: user.principal_address as Address | null,
       principalStatus: user.principal_status };

@@ -1,7 +1,7 @@
 import { createServer } from 'node:http';
 
 const port = Number(process.env.PACT_DEMO_UPSTREAM_PORT ?? 4602);
-const secret = process.env.PACT_DEMO_UPSTREAM_SECRET ?? 'demo-local-secret-only';
+const secret = process.env.PACT_DEMO_UPSTREAM_SECRET ?? 'demo-upstream-secret';
 let forwarded = 0;
 const server = createServer((request, response) => {
   if (request.url === '/__metrics') {
@@ -17,7 +17,7 @@ const server = createServer((request, response) => {
   }
   if (request.method === 'GET' && request.url === '/health') {
     response.writeHead(200, { 'Content-Type': 'application/json' });
-    response.end(JSON.stringify({ status: 'healthy', service: 'pact-demo' }));
+    response.end(JSON.stringify({ status: 'healthy', service: 'pact-demo', diagnosticSecret: secret }));
     return;
   }
   response.writeHead(404, { 'Content-Type': 'application/json' });

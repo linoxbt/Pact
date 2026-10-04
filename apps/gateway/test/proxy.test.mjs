@@ -8,9 +8,25 @@ import { DeploymentSecretCipher } from '@pact/security';
 import { registerControlPlaneRoutes } from '../../api/dist/control-plane.js';
 import { createGateway } from '../dist/server.js';
 import { forwardUpstream } from '../dist/upstream.js';
+import { projectProtectedResponse, selectEndpoint } from '../dist/proxy.js';
 
 const dbUrl = process.env.PACT_TEST_DATABASE_URL;
 const parse = response => { assert.ok(response.statusCode < 500, response.body); return response.json(); };
+test('endpoint selection prefers specific routes and rejects equal-precedence overlaps', () => {
+  const broad = { method: 'GET', path_pattern: '/*' };
+  const exact = { method: 'GET', path_pattern: '/health' };
+  assert.deepEqual(selectEndpoint([broad, exact], 'GET', '/health'),
+    { endpoint: exact, ambiguous: false });
+  const first = { method: 'GET', path_pattern: '/users/:id' };
+  const second = { method: 'GET', path_pattern: '/users/:user' };
+  assert.equal(selectEndpoint([first, second], 'GET', '/users/123').ambiguous, true);
+});
+test('authenticated upstream bodies default to empty and expose selected JSON fields only', () => {
+  const body = Buffer.from(JSON.stringify({ status:'ok', credential:'provider-secret' }));
+  assert.equal(projectProtectedResponse(body,'application/json',[]),'{}');
+  assert.deepEqual(JSON.parse(projectProtectedResponse(body,'application/json',['status'])),{status:'ok'});
+  assert.equal(projectProtectedResponse(Buffer.from('provider-secret'),'text/plain',['status']),'{}');
+});
 test('gateway blocks private destinations and non-TLS upstreams', async () => {
   await assert.rejects(() => forwardUpstream(new URL('https://127.0.0.1/secret'),
     'GET', {}, Buffer.alloc(0)), /UPSTREAM_ADDRESS_NOT_ALLOWED/);
@@ -32,7 +48,7 @@ test('account-owned proxy flow enforces policy, encrypts secrets, audits and rev
   await new Promise(resolve => upstream.listen(0, '127.0.0.1', resolve));
   const origin = `http://127.0.0.1:${upstream.address().port}`;
   const owner = { id: randomUUID(), did: `did:privy:${randomUUID().replaceAll('-','')}`,
-    principalAddress: `0x${randomBytes(20).toString('hex')}`, principalStatus: 'verified' };
+    principalAddress: `0x${randomBytes(20).toString('hex')}`, principalStatus: 'account_assigned' };
   const cipher = new DeploymentSecretCipher('ab'.repeat(32));
   const ctx = { database, credentials: cipher, ownerAuth: { authenticate: async () => owner } };
   const admin = Fastify();
@@ -50,10 +66,26 @@ test('account-owned proxy flow enforces policy, encrypts secrets, audits and rev
   try {
     await migrate(database);
     await database.query(`INSERT INTO pact_users(id,privy_did,principal_address,principal_status)
-      VALUES($1,$2,$3,'verified')`, [owner.id, owner.did, owner.principalAddress.toLowerCase()]);
+      VALUES($1,$2,$3,'account_assigned')`, [owner.id, owner.did, owner.principalAddress.toLowerCase()]);
+    assert.equal((await request('POST','/v2/account/onchain/prepare',{})).response.statusCode,409,
+      'account-assigned identifiers cannot authorize Monad transactions');
     const agent = (await request('POST','/v2/agents',{ name:'Demo agent', environment:'development' })).data;
+    const audit = (await request('GET','/v2/audit')).data;
+    assert.ok(audit.events.some(item => item.action === 'control.pact_connected_agents.insert'
+      && item.details.recordId === agent.id));
     const service = (await request('POST','/v2/services',{ agentId:agent.id,name:'Local demo',
       baseUrl:origin,authMethod:'bearer' })).data;
+    const raceGrant = (await request('POST','/v2/grants',{ agentId:agent.id,name:'Concurrent narrowing',
+      resourceOrigins:[origin],destinationOrigins:[origin],actions:['GET','POST'],currency:'USD',
+      perActionLimitMinor:'0',aggregateLimitMinor:'0',approvalThresholdMinor:'0',
+      startsAt:new Date(Date.now()-60_000).toISOString(),expiresAt:new Date(Date.now()+86_400_000).toISOString() })).data;
+    const race = await Promise.all([
+      request('PATCH',`/v2/grants/${raceGrant.id}`,{ actions:['GET'] }),
+      request('PATCH',`/v2/grants/${raceGrant.id}`,{ actions:['POST'] }),
+    ]);
+    assert.deepEqual(race.map(item=>item.response.statusCode).sort(),[200,409]);
+    const finalRaceGrant = (await request('GET',`/v2/grants/${raceGrant.id}`)).data;
+    assert.equal(finalRaceGrant.actions.length,1,'concurrent update cannot restore authority');
     const saved = await request('PUT',`/v2/services/${service.id}/secret`,{ secret:upstreamSecret });
     assert.equal(saved.response.statusCode,200);
     const stored = await database.query('SELECT ciphertext FROM pact_upstream_secrets WHERE service_id=$1',[service.id]);
@@ -66,7 +98,8 @@ test('account-owned proxy flow enforces policy, encrypts secrets, audits and rev
       { id:'health',name:'Allow health',effect:'allow',methods:['GET'],paths:['/health'],
         destinations:[origin],maxRequests:10,periodSeconds:60 } ] })).data;
     const endpoint = (await request('POST','/v2/endpoints',{ serviceId:service.id,grantId:grant.id,
-      policyId:policy.id,method:'GET',pathPattern:'/health',costMinor:'0',currency:'USD' })).data;
+      policyId:policy.id,method:'GET',pathPattern:'/health',costMinor:'0',currency:'USD',
+      responseFields:['ok','echoedSecret','encodedSecret'] })).data;
     assert.equal(endpoint.id.length,36);
     const issued = (await request('POST',`/v2/agents/${agent.id}/keys`,{
       name:'Demo integration',scopes:['proxy.read'],expiresAt:new Date(Date.now()+86_400_000).toISOString() })).data;
@@ -112,6 +145,28 @@ test('account-owned proxy flow enforces policy, encrypts secrets, audits and rev
     await request('DELETE',`/v2/agents/${agent.id}/keys/${rotated.id}`);
     assert.equal((await call(rotated.secret,'GET','/health')).statusCode,401);
     assert.equal(upstreamCalls,2);
+    const migrationSource = (await request('POST','/v2/grants',{ agentId:agent.id,
+      name:'Grant to migrate',resourceOrigins:[origin],destinationOrigins:[origin],
+      actions:['GET'],currency:'USD',perActionLimitMinor:'5',aggregateLimitMinor:'10',
+      approvalThresholdMinor:'5',startsAt:new Date(Date.now()-60_000).toISOString(),
+      expiresAt:new Date(Date.now()+86_400_000).toISOString() })).data;
+    await database.query('INSERT INTO pact_grant_usage(grant_id,spent_minor) VALUES($1,3)',
+      [migrationSource.id]);
+    const migratingEndpoint = (await request('POST','/v2/endpoints',{ serviceId:service.id,
+      grantId:migrationSource.id,policyId:policy.id,method:'GET',pathPattern:'/migration',
+      costMinor:'1',currency:'USD' })).data;
+    const nextPrincipal = `0x${randomBytes(20).toString('hex')}`;
+    await database.query('UPDATE pact_users SET principal_address=$2 WHERE id=$1',
+      [owner.id,nextPrincipal]);
+    owner.principalAddress = nextPrincipal;
+    const migrated = await request('POST',`/v2/grants/${migrationSource.id}/migrate`,{});
+    assert.equal(migrated.response.statusCode,200);
+    assert.equal(migrated.data.grant.principal_address,nextPrincipal);
+    assert.equal((await database.query('SELECT spent_minor FROM pact_grant_usage WHERE grant_id=$1',
+      [migrated.data.grant.id])).rows[0].spent_minor,'3');
+    assert.equal((await database.query('SELECT grant_id FROM pact_endpoints WHERE id=$1',
+      [migratingEndpoint.id])).rows[0].grant_id,migrated.data.grant.id);
+    assert.equal((await request('GET',`/v2/grants/${migrationSource.id}`)).data.status,'revoked');
   } finally {
     if (gateway) await gateway.close();
     await admin.close();

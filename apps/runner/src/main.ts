@@ -1,18 +1,22 @@
 import { KMSClient } from '@aws-sdk/client-kms';
 import { GetSecretValueCommand, SecretsManagerClient } from '@aws-sdk/client-secrets-manager';
 import { createPublicClient, http } from 'viem';
-import { CredentialCipher } from '@pact/security';
+import { CredentialCipher, DeploymentSecretCipher } from '@pact/security';
 import { createDatabase, loadCoreConfig, migrate, modelChargeMicro } from '@pact/operations';
 import { PactClient } from '@pact/sdk-ts';
 import { invokeModel, type ModelRequest } from './providers.js';
 
 const config = loadCoreConfig();
 const keyId = process.env.PACT_CREDENTIAL_KMS_KEY_ID;
-if (!keyId) throw new Error('Runner requires PACT_CREDENTIAL_KMS_KEY_ID');
+if (config.environment === 'production' && !keyId)
+  throw new Error('Production runner requires PACT_CREDENTIAL_KMS_KEY_ID');
 const approvedEndpoints = (process.env.PACT_CUSTOM_MODEL_ENDPOINTS ?? '').split(',').filter(Boolean);
 const database = createDatabase(config.databaseUrl);
 await migrate(database);
-const cipher = new CredentialCipher(new KMSClient({}), keyId);
+const cipher = keyId ? new CredentialCipher(new KMSClient({}), keyId) :
+  config.environment !== 'production' && process.env.PACT_VAULT_MASTER_KEY ?
+    new DeploymentSecretCipher(process.env.PACT_VAULT_MASTER_KEY) :
+    (() => { throw new Error('Runner requires credential encryption'); })();
 const secrets = new SecretsManagerClient({});
 const rpc = createPublicClient({ transport: http(config.rpcUrl) });
 if (await rpc.getChainId() !== config.chainId) throw new Error('RPC chain ID mismatch');

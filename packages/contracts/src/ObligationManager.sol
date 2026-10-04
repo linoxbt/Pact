@@ -26,6 +26,8 @@ contract ObligationManager {
         keccak256("EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)");
     bytes4 private constant ERC1271_MAGIC = 0x1626ba7e;
     uint256 private constant MAX_CHALLENGE = 30 days;
+    uint256 public constant ARBITRATION_TIMEOUT = 30 days;
+    bytes32 public constant ARBITRATOR_TIMEOUT_VERDICT = keccak256("PACT_ARBITRATOR_TIMEOUT_REFUND_V1");
 
     enum State {
         None,
@@ -234,6 +236,19 @@ contract ObligationManager {
         o.challengeEndsAt = uint64(block.timestamp);
         o.state = accepted ? State.Verified : State.Rejected;
         emit VerdictRecorded(id, verdictHash, accepted);
+    }
+
+    /// @notice Refunds a challenged obligation if its named arbitrator has not acted in time.
+    /// The principal and provider accept this fallback when they sign the obligation terms.
+    function resolveArbitratorTimeout(uint256 id) external {
+        Obligation storage o = obligations[id];
+        if (o.state != State.Challenged) revert InvalidState();
+        uint256 deadline = (o.challengeEndsAt == 0 ? o.verifyBy : o.challengeEndsAt) + ARBITRATION_TIMEOUT;
+        if (block.timestamp <= deadline) revert NotReady();
+        o.verdictHash = ARBITRATOR_TIMEOUT_VERDICT;
+        o.challengeEndsAt = uint64(block.timestamp);
+        o.state = State.Rejected;
+        emit VerdictRecorded(id, ARBITRATOR_TIMEOUT_VERDICT, false);
     }
 
     function finalize(uint256 id) external {

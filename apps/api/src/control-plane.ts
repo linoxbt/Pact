@@ -16,13 +16,24 @@ const hash = (value: string) => createHash('sha256').update(value).digest('hex')
 const pageSize = 30;
 const ownerId = (header: string | undefined, ctx: ApiContext) => ctx.ownerAuth!.authenticate(header);
 const audit = async (ctx: ApiContext, owner: Owner, action: string, details: Record<string, unknown>) => {
-  await ctx.database.query(
-    `INSERT INTO pact_audit_events(principal,actor,action,details) VALUES($1,$2,$3,$4)`,
-    [owner.principalAddress ?? owner.did, owner.did, action, JSON.stringify(details)]);
+  // The control-table trigger writes the mandatory event atomically. This
+  // richer event must not turn a committed mutation into a false API failure.
+  try {
+    await ctx.database.query(
+      `INSERT INTO pact_audit_events(principal,actor,action,details) VALUES($1,$2,$3,$4)`,
+      [owner.principalAddress ?? owner.did, owner.did, action, JSON.stringify(details)]);
+  } catch {
+    process.stderr.write(`PACT_AUDIT_DETAIL_WRITE_FAILED ${action}\n`);
+  }
 };
 const requirePrincipal = (owner: Owner) => {
   if (!owner.principalAddress || owner.principalStatus !== 'verified')
     fail('VERIFY_ACCOUNT_ADDRESS_FIRST', 409);
+  return owner.principalAddress!;
+};
+const requireHttpPrincipal = (owner: Owner) => {
+  if (!owner.principalAddress || owner.principalStatus === 'unverified')
+    fail('ACCOUNT_PRINCIPAL_UNAVAILABLE', 409);
   return owner.principalAddress!;
 };
 type IdRow = { id: string; owner_id: string; agent_id?: string; status?: string;
@@ -48,14 +59,24 @@ const originAllowed = (input: string, environment: string) => {
 export function registerControlPlaneRoutes(app: FastifyInstance, ctx: ApiContext): void {
   app.get('/v2/account', async request => {
     const owner = await ownerId(request.headers.authorization, ctx);
-    const onchainAccount = owner.principalAddress && ctx.accountFactory ?
-      await ctx.rpc.readContract({ address: ctx.accountFactory, abi: PactAccountFactoryAbi,
-        functionName: 'accountOf', args: [owner.principalAddress] }) : null;
+    let onchainAccount = null;
+    let onchainStatus = owner.principalStatus === 'verified' ?
+      (!ctx.accountFactory ? 'factory_unconfigured' : 'not_deployed') :
+      'external_proof_required';
+    if (owner.principalStatus === 'verified' && owner.principalAddress && ctx.accountFactory) {
+      try {
+        onchainAccount = await ctx.rpc.readContract({ address: ctx.accountFactory,
+          abi: PactAccountFactoryAbi, functionName: 'accountOf',
+          args: [owner.principalAddress] });
+        if (onchainAccount !== zeroAddress) onchainStatus = 'deployed';
+      } catch {
+        onchainStatus = 'rpc_unavailable';
+      }
+    }
     return { id: owner.id, principalAddress: owner.principalAddress,
       verificationStatus: owner.principalStatus,
       onchainAccount: onchainAccount === zeroAddress ? null : onchainAccount,
-      onchainStatus: !ctx.accountFactory ? 'factory_unconfigured' :
-        onchainAccount && onchainAccount !== zeroAddress ? 'deployed' : 'not_deployed',
+      onchainStatus,
       note: 'Gateway grants are account-owned. Onchain spending requires a separately authorized transaction.' };
   });
   app.post('/v2/account/onchain/prepare', async request => {
@@ -93,12 +114,23 @@ export function registerControlPlaneRoutes(app: FastifyInstance, ctx: ApiContext
        WHERE user_id=$1 ORDER BY id DESC LIMIT 100`, [owner.id]);
     return { changes: jsonSafe(rows.rows) };
   });
+  app.get('/v2/audit', async request => {
+    const owner = await ownerId(request.headers.authorization, ctx);
+    const { cursor } = z.object({ cursor: z.string().regex(/^[1-9]\d{0,18}$/).optional() })
+      .strict().parse(request.query);
+    const rows = await ctx.database.query<{ id: string }>(
+      `SELECT id::text,action,details,created_at FROM pact_audit_events
+       WHERE actor=$1 AND ($2::bigint IS NULL OR id<$2)
+       ORDER BY id DESC LIMIT $3`, [owner.did, cursor ?? null, pageSize + 1]);
+    const page = rows.rows.slice(0, pageSize);
+    return { events: jsonSafe(page), nextCursor: rows.rows.length > pageSize ?
+      page.at(-1)?.id ?? null : null };
+  });
 
   const agentInput = z.object({ name: label, environment: z.enum(['development','staging','production']),
     description: z.string().max(1000).default('') }).strict();
   app.post('/v2/agents', async request => {
     const owner = await ownerId(request.headers.authorization, ctx);
-    requirePrincipal(owner);
     const input = agentInput.parse(request.body);
     const id = randomUUID();
     const saved = await ctx.database.query(
@@ -134,7 +166,7 @@ export function registerControlPlaneRoutes(app: FastifyInstance, ctx: ApiContext
 
   app.post('/v2/grants', async request => {
     const owner = await ownerId(request.headers.authorization, ctx);
-    const principal = requirePrincipal(owner);
+    const principal = requireHttpPrincipal(owner);
     const input = grantInput.parse(request.body);
     await getOwned(ctx, 'pact_connected_agents', input.agentId, owner);
     const id = randomUUID();
@@ -165,8 +197,7 @@ export function registerControlPlaneRoutes(app: FastifyInstance, ctx: ApiContext
   });
   app.patch('/v2/grants/:id', async request => {
     const owner = await ownerId(request.headers.authorization, ctx);
-    const old = await getOwned(ctx, 'pact_authority_grants', (request.params as { id: string }).id, owner);
-    if (old.status !== 'active') fail('GRANT_REVOKED', 409);
+    const grantId = uuid.parse((request.params as { id: string }).id);
     const input = z.object({ actions: z.array(methodSchema).min(1).optional(),
       resourceOrigins: z.array(upstreamOrigin).min(1).optional(),
       destinationOrigins: z.array(upstreamOrigin).min(1).optional(),
@@ -176,14 +207,23 @@ export function registerControlPlaneRoutes(app: FastifyInstance, ctx: ApiContext
     if (!Object.keys(input).length) fail('EMPTY_UPDATE');
     const subset = (next: string[] | undefined, current: unknown) =>
       !next || next.every(value => (current as string[]).includes(value));
-    if (!subset(input.actions, old.actions) || !subset(input.resourceOrigins, old.resource_origins) ||
-        !subset(input.destinationOrigins, old.destination_origins) ||
-        (input.perActionLimitMinor && BigInt(input.perActionLimitMinor) > BigInt(old.per_action_limit_minor as string)) ||
-        (input.aggregateLimitMinor && BigInt(input.aggregateLimitMinor) > BigInt(old.aggregate_limit_minor as string)) ||
-        (input.approvalThresholdMinor && BigInt(input.approvalThresholdMinor) > BigInt(old.approval_threshold_minor as string)) ||
-        (input.expiresAt && Date.parse(input.expiresAt) > new Date(old.expires_at as string).getTime()))
-      fail('GRANT_CHANGES_MUST_NARROW_AUTHORITY', 409);
-    const rows = await ctx.database.query(
+    const client = await ctx.database.connect();
+    try {
+      await client.query('BEGIN');
+      const current = await client.query<IdRow>(
+        'SELECT * FROM pact_authority_grants WHERE id=$1 AND owner_id=$2 FOR UPDATE',
+        [grantId, owner.id]);
+      const old = current.rows[0];
+      if (!old) throw new AuthError('NOT_FOUND', 404);
+      if (old.status !== 'active') fail('GRANT_REVOKED', 409);
+      if (!subset(input.actions, old.actions) || !subset(input.resourceOrigins, old.resource_origins) ||
+          !subset(input.destinationOrigins, old.destination_origins) ||
+          (input.perActionLimitMinor && BigInt(input.perActionLimitMinor) > BigInt(old.per_action_limit_minor as string)) ||
+          (input.aggregateLimitMinor && BigInt(input.aggregateLimitMinor) > BigInt(old.aggregate_limit_minor as string)) ||
+          (input.approvalThresholdMinor && BigInt(input.approvalThresholdMinor) > BigInt(old.approval_threshold_minor as string)) ||
+          (input.expiresAt && Date.parse(input.expiresAt) > new Date(old.expires_at as string).getTime()))
+        fail('GRANT_CHANGES_MUST_NARROW_AUTHORITY', 409);
+      const rows = await client.query(
       `UPDATE pact_authority_grants SET actions=COALESCE($2,actions),
        resource_origins=COALESCE($3,resource_origins),destination_origins=COALESCE($4,destination_origins),
        per_action_limit_minor=COALESCE($5,per_action_limit_minor),
@@ -191,11 +231,65 @@ export function registerControlPlaneRoutes(app: FastifyInstance, ctx: ApiContext
        approval_threshold_minor=COALESCE($7,approval_threshold_minor),
        expires_at=COALESCE($8,expires_at),status=COALESCE($9,status),version=version+1,updated_at=now()
        WHERE id=$1 RETURNING *`,
-      [old.id, input.actions ?? null, input.resourceOrigins ?? null, input.destinationOrigins ?? null,
+      [grantId, input.actions ?? null, input.resourceOrigins ?? null, input.destinationOrigins ?? null,
         input.perActionLimitMinor ?? null, input.aggregateLimitMinor ?? null,
         input.approvalThresholdMinor ?? null, input.expiresAt ?? null, input.status ?? null]);
-    await audit(ctx, owner, 'grant.narrowed', { grantId: old.id, changes: input });
-    return jsonSafe(rows.rows[0]);
+      await client.query(
+        `INSERT INTO pact_audit_events(principal,actor,action,details) VALUES($1,$2,$3,$4)`,
+        [owner.principalAddress ?? owner.did, owner.did, 'grant.narrowed',
+          JSON.stringify({ grantId, changes: input })]);
+      await client.query('COMMIT');
+      return jsonSafe(rows.rows[0]);
+    } catch (cause) { await client.query('ROLLBACK'); throw cause; }
+    finally { client.release(); }
+  });
+
+  app.post('/v2/grants/:id/migrate', async request => {
+    const owner = await ownerId(request.headers.authorization, ctx);
+    const principal = requireHttpPrincipal(owner).toLowerCase();
+    const grantId = uuid.parse((request.params as { id: string }).id);
+    const client = await ctx.database.connect();
+    try {
+      await client.query('BEGIN');
+      const currentOwner = await client.query<{ principal_address: string;
+        principal_status: string }>(
+        'SELECT principal_address,principal_status FROM pact_users WHERE id=$1 FOR UPDATE',
+        [owner.id]);
+      if (!currentOwner.rows[0] || currentOwner.rows[0].principal_status === 'unverified' ||
+          currentOwner.rows[0].principal_address !== principal)
+        fail('PRINCIPAL_STATE_CHANGED', 409);
+      const current = await client.query<IdRow>(
+        'SELECT * FROM pact_authority_grants WHERE id=$1 AND owner_id=$2 FOR UPDATE',
+        [grantId, owner.id]);
+      const old = current.rows[0];
+      if (!old) throw new AuthError('NOT_FOUND', 404);
+      if (old.status !== 'active') fail('GRANT_REVOKED', 409);
+      if (old.principal_address === principal) fail('GRANT_ALREADY_CURRENT', 409);
+      const migratedId = randomUUID();
+      const migrated = await client.query(
+        `INSERT INTO pact_authority_grants
+         (id,owner_id,agent_id,principal_address,name,resource_origins,actions,destination_origins,
+          currency,per_action_limit_minor,aggregate_limit_minor,approval_threshold_minor,starts_at,expires_at)
+         SELECT $2,owner_id,agent_id,$3,name,resource_origins,actions,destination_origins,
+                currency,per_action_limit_minor,aggregate_limit_minor,approval_threshold_minor,
+                starts_at,expires_at FROM pact_authority_grants WHERE id=$1 RETURNING *`,
+        [grantId, migratedId, principal]);
+      await client.query(
+        `INSERT INTO pact_grant_usage(grant_id,spent_minor)
+         SELECT $2,spent_minor FROM pact_grant_usage WHERE grant_id=$1`, [grantId, migratedId]);
+      await client.query('UPDATE pact_endpoints SET grant_id=$2,updated_at=now() WHERE grant_id=$1',
+        [grantId, migratedId]);
+      await client.query("UPDATE pact_authority_grants SET status='revoked',updated_at=now() WHERE id=$1",
+        [grantId]);
+      await client.query(
+        `INSERT INTO pact_audit_events(principal,actor,action,details) VALUES($1,$2,$3,$4)`,
+        [principal, owner.did, 'grant.migrated', JSON.stringify({ priorGrantId: grantId,
+          newGrantId: migratedId, priorPrincipal: old.principal_address,
+          newPrincipal: principal, usageRetained: true })]);
+      await client.query('COMMIT');
+      return jsonSafe({ priorGrantId: grantId, grant: migrated.rows[0], usageRetained: true });
+    } catch (cause) { await client.query('ROLLBACK'); throw cause; }
+    finally { client.release(); }
   });
 
   app.post('/v2/policies', async request => {
@@ -311,7 +405,9 @@ export function registerControlPlaneRoutes(app: FastifyInstance, ctx: ApiContext
   const endpointInput = z.object({ serviceId: uuid, grantId: uuid, policyId: uuid,
     method: httpMethod, pathPattern: endpointPath,
     description: z.string().max(500).default(''), costMinor: money.default('0'),
-    currency: z.string().regex(/^[A-Z]{3,12}$/) }).strict();
+    currency: z.string().regex(/^[A-Z]{3,12}$/),
+    responseFields: z.array(z.string().regex(/^[A-Za-z_][A-Za-z0-9_]{0,63}$/))
+      .max(50).default([]) }).strict();
   const createEndpoint = async (owner: Owner, input: z.infer<typeof endpointInput>) => {
     const service = await getOwned(ctx, 'pact_services', input.serviceId, owner);
     const grant = await getOwned(ctx, 'pact_authority_grants', input.grantId, owner);
@@ -328,10 +424,11 @@ export function registerControlPlaneRoutes(app: FastifyInstance, ctx: ApiContext
     const rows = await ctx.database.query(
       `INSERT INTO pact_endpoints
        (id,service_id,agent_id,owner_id,grant_id,policy_id,method,path_pattern,
-        description,cost_minor,currency)
-       VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING *`,
+        description,cost_minor,currency,response_fields)
+       VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING *`,
       [id, service.id, service.agent_id, owner.id, grant.id, policy.id, input.method,
-        input.pathPattern, input.description, input.costMinor, input.currency]);
+        input.pathPattern, input.description, input.costMinor, input.currency,
+        input.responseFields]);
     await audit(ctx, owner, 'endpoint.created', { endpointId: id, serviceId: service.id,
       method: input.method, pathPattern: input.pathPattern });
     return jsonSafe(rows.rows[0]);
@@ -357,7 +454,8 @@ export function registerControlPlaneRoutes(app: FastifyInstance, ctx: ApiContext
     const owner = await ownerId(request.headers.authorization, ctx);
     const endpoint = await getOwned(ctx, 'pact_endpoints', (request.params as { id: string }).id, owner);
     const input = z.object({ description: z.string().max(500).optional(),
-      status: z.enum(['active','disabled']).optional(), policyId: uuid.optional() }).strict().parse(request.body);
+      status: z.enum(['active','disabled']).optional(), policyId: uuid.optional(),
+      responseFields: endpointInput.shape.responseFields.optional() }).strict().parse(request.body);
     if (!Object.keys(input).length) fail('EMPTY_UPDATE');
     if (input.policyId) {
       const policy = await getOwned(ctx, 'pact_http_policies', input.policyId, owner);
@@ -366,8 +464,10 @@ export function registerControlPlaneRoutes(app: FastifyInstance, ctx: ApiContext
     }
     const rows = await ctx.database.query(
       `UPDATE pact_endpoints SET description=COALESCE($2,description),status=COALESCE($3,status),
-       policy_id=COALESCE($4,policy_id),updated_at=now() WHERE id=$1 RETURNING *`,
-      [endpoint.id, input.description ?? null, input.status ?? null, input.policyId ?? null]);
+       policy_id=COALESCE($4,policy_id),response_fields=COALESCE($5,response_fields),
+       updated_at=now() WHERE id=$1 RETURNING *`,
+      [endpoint.id, input.description ?? null, input.status ?? null, input.policyId ?? null,
+        input.responseFields ?? null]);
     await audit(ctx, owner, 'endpoint.updated', { endpointId: endpoint.id, changes: input });
     return jsonSafe(rows.rows[0]);
   });
@@ -422,10 +522,11 @@ export function registerControlPlaneRoutes(app: FastifyInstance, ctx: ApiContext
         const row = await client.query(
           `INSERT INTO pact_endpoints
            (id,service_id,agent_id,owner_id,grant_id,policy_id,method,path_pattern,
-            description,cost_minor,currency)
-           VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING *`,
+            description,cost_minor,currency,response_fields)
+           VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING *`,
           [id, service.id, service.agent_id, owner.id, grantId, policyId, input.method,
-            input.pathPattern, input.description, input.costMinor, currency]);
+            input.pathPattern, input.description, input.costMinor, currency,
+            input.responseFields]);
         imported.push(row.rows[0]);
         await client.query(
           `INSERT INTO pact_audit_events(principal,actor,action,details) VALUES($1,$2,$3,$4)`,
@@ -563,9 +664,12 @@ export function registerControlPlaneRoutes(app: FastifyInstance, ctx: ApiContext
       `UPDATE pact_proxy_approvals SET state='expired' WHERE owner_id=$1 AND state='pending'
        AND expires_at<=now()`, [owner.id]);
     const rows = await ctx.database.query(
-      `SELECT x.*,a.name AS agent_name,e.method,e.path_pattern FROM pact_proxy_approvals x
+      `SELECT x.*,a.name AS agent_name,e.method,e.path_pattern,
+              g.name AS grant_name,p.name AS policy_name FROM pact_proxy_approvals x
        JOIN pact_connected_agents a ON a.id=x.agent_id
        JOIN pact_endpoints e ON e.id=x.endpoint_id
+       LEFT JOIN pact_authority_grants g ON g.id=x.grant_id
+       LEFT JOIN pact_http_policies p ON p.id=x.policy_id
        WHERE x.owner_id=$1 ORDER BY x.created_at DESC LIMIT 100`, [owner.id]);
     return { approvals: jsonSafe(rows.rows) };
   });

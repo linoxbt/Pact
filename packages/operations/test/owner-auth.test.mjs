@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { generateKeyPairSync, sign } from 'node:crypto';
-import { PrivyTokenVerifier } from '../dist/index.js';
+import { generateKeyPairSync, randomUUID, sign } from 'node:crypto';
+import { PrivyTokenVerifier, OwnerAuthService, createDatabase, migrate } from '../dist/index.js';
 
 test('owner authentication verifies signed Privy app tokens and rejects altered claims', async () => {
   const { privateKey, publicKey } = generateKeyPairSync('ec', { namedCurve:'prime256v1' });
@@ -29,3 +29,23 @@ test('owner authentication verifies signed Privy app tokens and rejects altered 
   await assert.rejects(() => verifier.verify(`${one}.${two}.${three.slice(0,-2)}xx`),
     /INVALID_OWNER_TOKEN/);
 });
+
+test('new Privy account gets a unique HTTP principal without a wallet or RPC call',
+  { skip: !process.env.PACT_TEST_DATABASE_URL }, async () => {
+    const database = createDatabase(process.env.PACT_TEST_DATABASE_URL);
+    await migrate(database);
+    const rpc = { verifyMessage: async () => { throw Error('wallet proof must not run on signup'); } };
+    let didIndex = 0;
+    const prefix = randomUUID().replaceAll('-','');
+    const verifier = { verify: async () => ({ did: `did:privy:${prefix}${++didIndex}`, issuedAt: 1 }) };
+    const auth = new OwnerAuthService(database, rpc, verifier, 'localhost');
+    try {
+      const first = await auth.authenticate('Bearer test');
+      const second = await auth.authenticate('Bearer test');
+      assert.match(first.principalAddress,/^0x[0-9a-f]{40}$/);
+      assert.equal(first.principalStatus,'account_assigned');
+      assert.notEqual(first.principalAddress,second.principalAddress);
+      const stored = await database.query('SELECT principal_status FROM pact_users WHERE id=$1',[first.id]);
+      assert.equal(stored.rows[0].principal_status,'account_assigned');
+    } finally { await database.end(); }
+  });

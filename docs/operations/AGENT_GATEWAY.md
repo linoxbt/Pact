@@ -20,11 +20,11 @@ The demo upstream listens on `http://127.0.0.1:4602` and accepts bearer secret `
 
 ## Browser walkthrough
 
-1. Open the Console, sign in with email or a passkey, and approve the message to verify your newly created embedded account address. No blockchain transaction occurs.
+1. Open the Console and sign in with email or a passkey. Pact assigns a unique account address for HTTP grants automatically. No wallet prompt or blockchain transaction occurs.
 2. In **Agents**, register `Demo assistant` in `development`.
 3. In **Endpoints**, add service `Demo upstream` with base URL `http://127.0.0.1:4602`, authentication `bearer`, and store `demo-upstream-secret` in its secret form.
 4. In **Grants**, create a grant for the agent. Permit origin and destination `http://127.0.0.1:4602/`, method `GET`, currency `USD`, per action and aggregate limits `0` minor units, and a future expiry. The owner and principal are copied from the signed in account.
-5. In **Policies**, add an ordered `allow` rule for `GET /health` and destination `http://127.0.0.1:4602/`, with a rate budget. Bind that grant and policy to a registered `GET /health` operation in **Endpoints**.
+5. In **Policies**, add an ordered `allow` rule for `GET /health` and destination `http://127.0.0.1:4602/`, with a rate budget. Bind that grant and policy to a registered `GET /health` operation in **Endpoints**. Keep returned JSON fields `status, service, ok`; the upstream's diagnostic credential field is excluded.
 6. In **API keys**, issue a `proxy.read` key for the agent. Copy it once. In the **Endpoints** test console, select the service and send `GET /health`; expect HTTP 200 with the secret redacted. Send `GET /forbidden`; expect 403. A `POST /health` with this read-only key returns 401 at the credential boundary. The upstream `/__metrics` count increases only for the allowed call.
 7. Open **Live Activity**. The allowed GET and denied forbidden path appear automatically with their rule trace and request ID. Revoke the key and retry `GET /health`; expect 401 and no upstream request.
 
@@ -32,9 +32,9 @@ Use the test console only in a trusted browser. A production agent should store 
 
 ## Data and security boundaries
 
-- Privy signs users in. The API verifies its ES256 token against Privy's app JWKS and binds the DID to one Pact user. Each user has a separate principal address, proved with a short lived wallet signature. Changing the address creates an audit record; existing grants retain their original principal.
+- Privy signs users in. The API verifies its ES256 token against Privy's app JWKS and binds the DID to one Pact user. On first sign-in Pact assigns each user a random, unique principal address for HTTP records. This address is an account identifier with no signing key and cannot authorize a Monad transaction. Changing to an external address requires a short lived wallet signature and creates an audit record; existing grants retain their original principal until explicitly migrated.
 - API keys contain 256 random bits. Pact stores SHA-256 hashes, agent binding, scopes, expiry, last use and revocation. Rotation revokes the old key in the same database transaction that issues the replacement. API keys cannot create grants, approve requests or sign chain transactions.
-- Upstream secrets are encrypted at rest. Only the gateway decrypts after an allowed decision and injects a bearer or configured header. It pins DNS resolution for each request, blocks private addresses outside the explicit local demo exception, caps bodies, times out requests and rejects redirects. The proxy does not persist request bodies, response bodies, tokens, query strings or upstream secrets.
+- Upstream secrets are encrypted at rest. Only the gateway decrypts after an allowed decision and injects a bearer or configured header. For an authenticated upstream, the gateway returns only the operation's selected top-level JSON fields; the default selection is empty. It additionally redacts the exact credential and common encodings in selected fields. Operators should select only fields needed by the agent and use trusted upstreams; no generic filter can recognize an arbitrary transformation of a secret made by an untrusted provider. Existing authenticated operations return an empty JSON object until their response fields are reviewed. The gateway pins DNS resolution, blocks private addresses outside the explicit local demo exception, caps bodies, times out requests and rejects redirects. The proxy does not persist request bodies, response bodies, tokens, query strings or upstream secrets.
 - Ordered policy rules and grant bounds are evaluated inside a database transaction with a locked grant usage row. A denied request is recorded and never forwarded. An approval is bound to an exact request hash, endpoint and 15 minute lifetime.
 - Activity is visible only to the owner, retained for 30 days, and is a private operational log. Monad receipts are separately anchored and verifiable only after a confirmed chain transaction.
 
