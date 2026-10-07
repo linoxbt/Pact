@@ -38,7 +38,7 @@ Status is evidence-based: a source fix is not a verified deployment.
 | B12 | Factory account indexing | Deployed; catch-up verified | Factory creation replay after configuration change and same-batch account discovery regression pass |
 | M1 | Per-user on-chain signing | Source verified; hosted signing verification pending | Per-user embedded signer proof, factory deployment flow and account-specific legacy configuration |
 | M2 | Hosted runner deployment | Deployed; live heartbeat verified | Supervised worker/runner pair uses existing Free Railway service; runner heartbeat added |
-| M3 | Production secrets/evidence/recovery | Open | |
+| M3 | Production secrets/evidence/recovery | Operator configuration required | No AWS profile available; deployment remains staging. Production cloud evidence, IAM and restore drill are not falsely marked complete. |
 | M4 | Request economic constraints | Source verified | Real gateway rejects excessive minor units, wrong currency and recipient; Console fields wired |
 | M5 | Exact transaction simulation | Source verified | Exact prepared transfer eth_call with pinned block/sender; SDK regression passes |
 | M6 | Management editing/pagination | Browser/database verified | Stable cursor pagination including tied timestamps; 1000-resource quota regression; agent editing and endpoint policy assignment |
@@ -62,7 +62,7 @@ Not production-ready for live funds or confidential production workloads. The ve
 - Dependency audit returned zero advisories, including build dependencies.
 - `scripts/verify-contract-release.mjs` matched all seven deployed runtimes (excluding separately verified immutable slots) and contract links on chain 10143. Arbitration timeout is 2,592,000 seconds. Old next grant/reservation/obligation IDs were each 1, so there was no old grant exposure to migrate.
 - Cloudflare Console version: `50caf59c-cb52-4b2b-b50d-76933449fd19`.
-- Railway API deployment: `92328cbc-c52d-4403-a360-2287bcd8a8a2` observed SUCCESS. Other service status is recorded below when verified.
+- Railway API deployment: `92328cbc-c52d-4403-a360-2287bcd8a8a2` observed SUCCESS. All existing Pact application services subsequently reached SUCCESS; final IDs follow.
 
 ## Remaining operator-dependent release gates
 
@@ -70,3 +70,17 @@ Production KMS/S3/Secrets Manager/IAM, a real cloud backup/evidence restore dril
 
 - Extended browser checks also passed approval inspection, automatic expiry, injected credential-storage failure recovery and independent workspace loading.
 - Live worker/runner heartbeat verified via private Railway SSH. Indexer catch-up lag was observed; historical header fetching is now bounded and the four indexer regressions pass. Live probe subsequently reported healthy=true, no faults, and four blocks of lag; runner, worker and indexer heartbeats were current.
+
+## Final hosted release verification
+
+| Service | Deployment/version | Result |
+| --- | --- | --- |
+| API | `92328cbc-c52d-4403-a360-2287bcd8a8a2` | SUCCESS; public readiness 200; corrected contract configuration returned |
+| Gateway | `1eaa66de-297f-4a6c-8daa-ea17ee588a1d` | SUCCESS after retry; public readiness 200 |
+| Worker + runner | `eecdaacd-22c8-4a12-8e66-1dab35e86902` | SUCCESS; both live heartbeats current |
+| Indexer | `558d2c14-5633-4539-94d5-7e0353f10efc` | SUCCESS; caught up to four blocks behind finalized head |
+| Cloudflare Console | `50caf59c-cb52-4b2b-b50d-76933449fd19` | Published at the existing workers.dev URL |
+
+GitHub CI passed on `506896770842bf867b923526df20fd2882b59195`: [run 37683546871](https://github.com/linoxbt/Pact/actions/runs/37683546871). This includes the complete workspace checks, all database tests and the extended browser integration. The prior run failed to launch the runner's preinstalled Chrome; CI now explicitly provisions Chrome for Testing and uses its reported binary path.
+
+No remaining critical/high code defect was reproduced in the covered audit regressions. This is not a claim that all possible defects are absent. The remaining production release gates are AWS cloud configuration/recovery, real hosted identity/recovery verification and a credential-backed managed-model run. These require operator resources or user participation, so the production audit is not marked completely clean.
