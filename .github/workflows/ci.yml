@@ -34,7 +34,12 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm check
       - run: pnpm test
+      - uses: browser-actions/setup-chrome@v2
+        id: chrome
+        with:
+          chrome-version: stable
+          install-dependencies: true
       - name: Console integration (isolated test identity)
         run: node apps/console/test/browser.mjs
         env:
-          CHROME_PATH: /usr/bin/google-chrome
+          CHROME_PATH: ${{ steps.chrome.outputs.chrome-path }}

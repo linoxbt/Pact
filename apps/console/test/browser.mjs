@@ -53,11 +53,18 @@ const vite=await createServer({root,configFile:false,server:{host:'127.0.0.1',po
 await vite.listen();
 const profile=await mkdtemp(join(tmpdir(),'pact-console-test-'));
 const chrome=spawn(process.env.CHROME_PATH??'/snap/bin/chromium',['--headless','--no-sandbox','--disable-dev-shm-usage',
-  '--remote-debugging-port=9369',`--user-data-dir=${profile}`,'about:blank'],{stdio:'ignore'});
+  '--no-first-run','--no-default-browser-check','--disable-gpu',
+  '--remote-debugging-port=9369',`--user-data-dir=${profile}`,'about:blank'],{stdio:['ignore','ignore','pipe']});
+let chromeError='';
+chrome.stderr.on('data',chunk=>{chromeError=(chromeError+chunk.toString()).slice(-6000);});
+chrome.on('error',error=>{chromeError=error.message;});
 let ws;
 try {
   let targets;
-  for(let i=0;i<100;i++){try{targets=await fetch('http://127.0.0.1:9369/json').then(r=>r.json());break;}catch{await new Promise(r=>setTimeout(r,100));}}
+  for(let i=0;i<300;i++){try{targets=await fetch('http://127.0.0.1:9369/json').then(r=>r.json());break;}catch{
+    if(chrome.exitCode!==null || chrome.signalCode!==null)break;
+    await new Promise(r=>setTimeout(r,100));}}
+  if(!targets?.some(t=>t.type==='page'))throw Error(`Chrome did not start: ${chromeError}`);
   ws=new WebSocket(targets.find(t=>t.type==='page').webSocketDebuggerUrl);
   await new Promise(r=>ws.addEventListener('open',r,{once:true}));
   let sequence=0;const pending=new Map();
@@ -139,6 +146,6 @@ try {
 } finally {
   ws?.close();chrome.kill('SIGTERM');await vite.close();await api.close();await gateway.close();
   upstream.closeAllConnections();await new Promise(resolve=>upstream.close(resolve));await database.end();
-  await new Promise(r=>chrome.exitCode!==null?r():chrome.once('exit',r));
+  await new Promise(r=>chrome.exitCode!==null || chrome.signalCode!==null || !chrome.pid?r():chrome.once('exit',r));
   await rm(profile,{recursive:true,force:true});
 }
