@@ -3,8 +3,8 @@ import cors from '@fastify/cors';
 import helmet from '@fastify/helmet';
 import { encodeFunctionData, type Address, type Hex, type PublicClient } from 'viem';
 import { CommitmentLedgerAbi, ObligationManagerAbi, PactAccountAbi,
-  ReceiptRegistryAbi } from '@pact/abis';
-import { AuthError, AuthService, OperationStore, jsonSafe, type Database,
+  ReceiptRegistryAbi, PactAccountFactoryAbi } from '@pact/abis';
+import { clientHttpError, enforceIngress, AuthError, AuthService, OperationStore, jsonSafe, type Database,
   type OwnerAuthService } from '@pact/operations';
 import { hashObligationTerms, hashTransferIntent } from '@pact/schemas';
 import { canonicalGatewayPolicy, gatewayPolicySchema, hashGatewayPolicy,
@@ -55,25 +55,47 @@ const requireGrantReader = async (ctx: ApiContext, header: string | undefined, g
 export async function createApi(ctx: ApiContext): Promise<FastifyInstance> {
   const app = Fastify({ logger: { redact: ['req.headers.authorization', 'req.headers.cookie'],
     serializers: { req: request => ({ method: request.method,
-      url: request.url?.split('?')[0] ?? '', host: request.headers.host ?? '' }) } },
-    bodyLimit: 256 * 1024 });
+      route: request.routeOptions?.url ?? '[unmatched]'  }) } },
+    bodyLimit: 256 * 1024, connectionTimeout: 15_000, requestTimeout: 15_000 });
+  app.addHook('onRequest', async request => {
+    if (request.method !== 'OPTIONS' && request.url !== '/health')
+      await enforceIngress(ctx.database, request.ip, request.headers.authorization);
+  });
   await app.register(helmet);
   await app.register(cors, { origin: ctx.allowedOrigin, methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'],
     allowedHeaders: ['authorization', 'content-type', 'x-idempotency-key', 'x-pact-evidence-type'] });
   app.setErrorHandler((cause, _request, reply) => {
+    if (cause instanceof Error && 'code' in cause && cause.code === 'P0001' &&
+        cause.message === 'RESOURCE_QUOTA_EXCEEDED')
+      return reply.code(409).send({error:'RESOURCE_QUOTA_EXCEEDED',message:'This workspace has reached its 1,000-record limit for this resource. Contact the operator to archive records or adjust the quota.'});
     if (cause instanceof ZodError) return reply.code(400).send({ error: 'INVALID_INPUT', issues: cause.issues });
-    if (cause instanceof AuthError) return reply.code(cause.statusCode).send({ error: cause.message });
+    if (cause instanceof AuthError) {
+      if (cause.statusCode === 429) reply.header('Retry-After','60');
+      return reply.code(cause.statusCode).send({ error: cause.message });
+    }
+    const clientError = clientHttpError(cause);
+    if (clientError) return reply.code(clientError.status).send({ error: clientError.code });
     if (cause instanceof SyntaxError && 'statusCode' in cause && cause.statusCode === 400)
       return reply.code(400).send({ error: 'INVALID_JSON' });
-    app.log.error(cause);
+    app.log.error({ name: cause instanceof Error ? cause.name : 'UnknownError' }, 'Request failed');
     return reply.code(500).send({ error: 'INTERNAL_ERROR' });
   });
 
   app.get('/health', async () => ({ status: 'ok' }));
-  app.get('/v1/config', async () => respond({ chainId: await ctx.rpc.getChainId(),
-    registry: ctx.pact.addresses.registry, account: ctx.pact.addresses.account,
-    accountPrincipal: await ctx.rpc.readContract({ address: ctx.pact.addresses.account,
-      abi: PactAccountAbi, functionName: 'principal' }) }));
+  app.get('/v1/config', async request => {
+    const input=z.object({principal:address.optional()}).strict().parse(request.query);
+    let account=ctx.pact.addresses.account;
+    let accountPrincipal=await ctx.rpc.readContract({address:account,abi:PactAccountAbi,functionName:'principal'});
+    if (input.principal && input.principal.toLowerCase()!==accountPrincipal.toLowerCase()) {
+      if (!ctx.accountFactory) error(409,'ACCOUNT_FACTORY_UNCONFIGURED');
+      account=await ctx.rpc.readContract({address:ctx.accountFactory!,abi:PactAccountFactoryAbi,
+        functionName:'accountOf',args:[input.principal]});
+      if (account==='0x0000000000000000000000000000000000000000') error(409,'DEPLOY_ACCOUNT_FIRST');
+      accountPrincipal=await ctx.rpc.readContract({address:account,abi:PactAccountAbi,functionName:'principal'});
+      if (accountPrincipal.toLowerCase()!==input.principal.toLowerCase()) error(409,'ACCOUNT_OWNER_MISMATCH');
+    }
+    return respond({chainId:await ctx.rpc.getChainId(),registry:ctx.pact.addresses.registry,account,accountPrincipal});
+  });
   app.get('/v1/agent/me', async request => {
     const session = await ctx.auth.authenticate(request.headers.authorization, 'read');
     if (session.kind !== 'agent' || session.grantId === null) error(403, 'AGENT_ONLY');
@@ -202,13 +224,16 @@ export async function createApi(ctx: ApiContext): Promise<FastifyInstance> {
     const grantPact = await ctx.pact.forGrant(input.intent.grantId);
     const proof = await grantPact.verifyTransfer(input.intent, input.reservationId, input.approval);
     if (!proof.valid) error(403, proof.reason);
+    let simulation;
+    try { simulation = await grantPact.simulateExecuteTransfer(input.intent,input.reservationId,input.approval); }
+    catch { error(409,'EXECUTION_SIMULATION_FAILED'); }
     const call = grantPact.prepareExecuteTransfer(input.intent, input.reservationId, input.approval);
     const actionHash = hashTransferIntent(await ctx.rpc.getChainId(), grantPact.addresses.account, input.intent);
     const operation = await ctx.operations.prepare({ principal: session.principal, actor: session.address,
       kind: 'transfer-execution', idempotencyKey: input.idempotencyKey, actionHash,
       targetAddress: call.address, expectedEvent: 'TransferExecuted', grantId: input.intent.grantId,
       reservationId: input.reservationId });
-    return respond({ operation, proof, to: call.address, data: encodeFunctionData(call), value: '0' });
+    return respond({ operation, proof, simulation, to: call.address, data: encodeFunctionData(call), value: '0' });
   });
   app.post('/v1/transfers/approval-payload', async request => {
     const input = await body(request.body, z.object({ intent: transferIntent, reservationId: id }).strict());

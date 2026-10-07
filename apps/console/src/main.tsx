@@ -21,6 +21,7 @@ export type WalletAdapter = {
   logout(): Promise<void>;
   hasPasskey?: boolean;
   createPasskey?(): Promise<void>;
+  getPrincipal?(): Promise<string>;
 };
 type Config = { chainId: number; registry: Address; account: Address; accountPrincipal: Address };
 type Grant = { id: string; principal: Address; agent: Address; account: Address; token: Address;
@@ -65,7 +66,7 @@ export function App({ walletAdapter }: { walletAdapter?: WalletAdapter }) {
   const [config, setConfig] = useState<Config>();
   const [address, setAddress] = useState<Address>();
   const [token, setToken] = useState<string>();
-  const [message, setMessage] = useState('Connect a principal wallet to manage authority.');
+  const [message, setMessage] = useState('Authorize your account wallet to manage Monad grants.');
   const [grants, setGrants] = useState<Grant[]>([]);
   const [operations, setOperations] = useState<Operation[]>([]);
   const [approvals, setApprovals] = useState<Approval[]>([]);
@@ -114,14 +115,15 @@ export function App({ walletAdapter }: { walletAdapter?: WalletAdapter }) {
       return;
     }
     void run(async () => {
-    const settings = await request('/v1/config') as Config;
+    const principal = await walletAdapter?.getPrincipal?.();
+    const settings = await request(`/v1/config${principal ? `?principal=${encodeURIComponent(principal)}` : ''}`) as Config;
     let wallet: Provider | undefined;
     if (walletAdapter) {
       const selected = walletAdapter.wallets.find(item =>
         item.address.toLowerCase() === settings.accountPrincipal.toLowerCase());
       if (!selected) {
         walletAdapter.connectWallet();
-        setMessage(`Connect principal wallet ${settings.accountPrincipal} to manage Pact authority.`);
+        setMessage(`Use your verified account wallet ${settings.accountPrincipal} to manage Monad authority.`);
         return;
       }
       if (selected.chainId !== `eip155:${settings.chainId}`)
@@ -135,7 +137,7 @@ export function App({ walletAdapter }: { walletAdapter?: WalletAdapter }) {
     const accounts = await wallet.request({ method: 'eth_requestAccounts' }) as Address[];
     const current = accounts.find(item =>
       item.toLowerCase() === settings.accountPrincipal.toLowerCase());
-    if (!current) throw Error('Connected wallet is not the Pact principal');
+    if (!current) throw Error('Choose the signing wallet verified in your Pact Account settings');
     const chain = Number(BigInt(await wallet.request({ method: 'eth_chainId' }) as string));
     if (chain !== settings.chainId) throw Error(`Switch wallet to chain ${settings.chainId}`);
     const challenge = await request('/v1/auth/challenge', undefined, { address: current });
@@ -162,7 +164,7 @@ export function App({ walletAdapter }: { walletAdapter?: WalletAdapter }) {
     activeProvider.current = undefined;
     setToken(undefined); setAddress(undefined); setSelected(undefined);
     setGrants([]); setOperations([]); setApprovals([]);
-    setMessage('The connected principal wallet changed. Sign in again.');
+    setMessage('The signing wallet changed. Authorize a new session.');
   }, [walletAdapter?.ready, walletAdapter?.authenticated, walletAdapter?.walletsReady,
     walletSet, token, address]);
   useEffect(() => {
@@ -284,13 +286,13 @@ export function App({ walletAdapter }: { walletAdapter?: WalletAdapter }) {
   const currentView = navigation.find(item => item.id === view)!;
   const pendingApprovals = approvals.filter(item => item.state === 'pending').length;
   const shortAddress = address ? `${address.slice(0,6)}…${address.slice(-4)}` : 'Not connected';
-  const loginLabel = walletAdapter ? walletAdapter.authenticated ? 'Connect principal wallet' : 'Sign in' : 'Connect wallet';
+  const loginLabel = walletAdapter ? walletAdapter.authenticated ? 'Authorize Monad session' : 'Sign in' : 'Connect wallet';
   const loginDisabled = busy || Boolean(walletAdapter && !walletAdapter.ready);
   return <div className="workspace"><dialog ref={menu} id="workspace-menu" className="workspaceDrawer" aria-label="Workspace menu" onClose={() => { setMenuOpen(false); menuButton.current?.focus(); }} onClick={event => { if (event.target === event.currentTarget) closeMenu(); }}><aside className="workspaceSidebar"><div className="drawerHeading"><Brand/><button aria-label="Close navigation" onClick={closeMenu}><Icon name="close"/></button></div><div className="workspaceIdentity"><span className="workspaceAvatar">P</span><div>Pact workspace<small><i className="statusDot"/> Monad testnet</small></div><span className="workspaceVersion">01</span></div><span className="navGroup">WORKSPACE</span><nav aria-label="Workspace navigation">{navigation.map(item => <button key={item.id} onClick={() => { setView(item.id); closeMenu(); }} aria-current={view === item.id ? 'page' : undefined}><Icon name={item.icon} size={18}/>{item.label}{item.id === 'approvals' && pendingApprovals > 0 && <span className="navCount">{pendingApprovals}</span>}</button>)}</nav><div className="sidebarBottom"><a href="/docs"><Icon name="book" size={17}/> Documentation <Icon name="external" size={13}/></a><a href="/explorer"><Icon name="globe" size={17}/> Public Explorer <Icon name="external" size={13}/></a><div className="sidebarAccount"><span><Icon name="wallet" size={18}/></span><div>{shortAddress}<small>{token ? 'Principal session' : 'Connect to get started'}</small></div></div></div></aside></dialog>
     <div className="workspaceBody"><div className="workspaceTopbar"><div><button ref={menuButton} className="menuToggle" aria-label="Open navigation" aria-controls="workspace-menu" aria-expanded={menuOpen} onClick={() => { menu.current?.showModal(); setMenuOpen(true); }}><Icon name="menu"/></button><span className="workspaceBreadcrumb">Workspace</span><span>/</span><strong>{currentView.label}</strong></div><div className="wallet"><span className="networkBadge"><i className="statusDot"/> Monad testnet</span>{address ? <><code title={address}>{shortAddress}</code><button className="secondary" onClick={logout} disabled={busy}>Sign out</button></> : <button onClick={connect} disabled={loginDisabled}><Icon name="wallet" size={15}/>{loginLabel}</button>}{walletAdapter?.authenticated && <><button className="secondary" disabled={busy || !walletAdapter.createPasskey || !(window.isSecureContext && 'PublicKeyCredential' in window)} title={window.isSecureContext && 'PublicKeyCredential' in window ? 'Save a passkey to sign in with your device' : 'Passkeys require a supported browser on HTTPS'} onClick={() => void run(async () => { await walletAdapter.createPasskey!(); setMessage('Passkey created. You can now use it to sign in on this site.'); })}><Icon name="key" size={15}/>{walletAdapter.hasPasskey ? 'Add passkey' : 'Create passkey'}</button>{!address && <button className="secondary" onClick={logout} disabled={busy}>Sign out</button>}</>}</div></div>
     <main id="main-content" className="consoleMain"><header className="workspaceHeading"><div><span className="eyebrow">PACT / CONTROL PLANE</span><h1>{view === 'overview' ? 'Your authority, at a glance.' : currentView.label}</h1><p>{currentView.description}</p></div><a className="helpLink" href={`/docs#${view === 'agents' ? 'agents' : view === 'approvals' ? 'approvals' : 'quickstart'}`}><Icon name="book" size={15}/> Guide <Icon name="external" size={13}/></a></header>
-    {walletAdapter?.authenticated && !token && <div className="notice" role="status">You’re signed in. Connect your authorized principal wallet to manage this workspace. You can also create a passkey for your next visit.</div>}
-    {message !== 'Connect a principal wallet to manage authority.' && <div role="status" className="notice">{message}</div>}
+    {walletAdapter?.authenticated && !token && <div className="notice" role="status">You’re signed in. Authorize your verified account wallet for Monad transactions. HTTP agents work in the main Console without this step.</div>}
+    {message !== 'Authorize your account wallet to manage Monad grants.' && <div role="status" className="notice">{message}</div>}
     {view === 'overview' && <div className="overviewView"><div className="metricGrid">{[
       ['shield','Registered grants',token ? String(grants.length) : '—','Indexed authority records'],
       ['inbox','Awaiting approval',token ? String(pendingApprovals) : '—','Requests needing your signature'],

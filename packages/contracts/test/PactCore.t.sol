@@ -82,6 +82,31 @@ contract PactCoreTest {
         );
     }
 
+    function testIntentReplayProtectionIsScopedToGrant() public {
+        vm.prank(principal);
+        uint256 other = registry.createRoot(
+            child,
+            address(account),
+            address(token),
+            address(0xBEEF),
+            100,
+            100,
+            100,
+            uint64(block.timestamp + 1 days),
+            0,
+            POLICY
+        );
+        bytes32 intent = keccak256("victim-intent");
+        vm.prank(child);
+        ledger.reserve(other, intent, 1, uint64(block.timestamp + 1 hours));
+        vm.prank(agent);
+        ledger.reserve(root, intent, 10, uint64(block.timestamp + 1 hours));
+        require(ledger.usedIntent(root, intent) && ledger.usedIntent(other, intent), "scoped replay state");
+        vm.expectRevert();
+        vm.prank(agent);
+        ledger.reserve(root, intent, 10, uint64(block.timestamp + 1 hours));
+    }
+
     function testFactoryCreatesSeparatePrincipalAccounts() public {
         PactAccountFactory factory = new PactAccountFactory(registry, ledger);
         vm.prank(principal);

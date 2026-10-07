@@ -1,6 +1,6 @@
 import type { Database } from './db.js';
 
-export async function writeHeartbeat(database: Database, service: 'worker' | 'indexer',
+export async function writeHeartbeat(database: Database, service: 'worker' | 'indexer' | 'runner',
   instanceId: string, success: boolean, errorCode?: string): Promise<void> {
   if (errorCode && !/^[A-Z_]{1,64}$/.test(errorCode)) throw new Error('Invalid heartbeat error code');
   await database.query(

@@ -33,6 +33,20 @@ test('gateway blocks private destinations and non-TLS upstreams', async () => {
   await assert.rejects(() => forwardUpstream(new URL('http://example.com/secret'),
     'GET', {}, Buffer.alloc(0)), /UPSTREAM_ORIGIN_NOT_ALLOWED/);
 });
+test('upstream total deadline stops a continuously dripping response', async()=>{
+  const server=createServer((_request,response)=>{
+    response.writeHead(200,{'content-type':'text/plain'});
+    const timer=setInterval(()=>response.write('x'),10);
+    response.on('close',()=>clearInterval(timer));
+  });
+  await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
+  try {
+    const started=Date.now();
+    await assert.rejects(()=>forwardUpstream(new URL(`http://127.0.0.1:${server.address().port}/`),
+      'GET',{},Buffer.alloc(0),true,150));
+    assert.ok(Date.now()-started<2000,'deadline must include the response body');
+  } finally {server.closeAllConnections();await new Promise(resolve=>server.close(resolve));}
+});
 test('account-owned proxy flow enforces policy, encrypts secrets, audits and revokes keys',
   { skip: !dbUrl }, async () => {
   const database = createDatabase(dbUrl);
@@ -133,7 +147,7 @@ test('account-owned proxy flow enforces policy, encrypts secrets, audits and rev
     assert.equal(deniedPath.statusCode,403);
     assert.equal(upstreamCalls,1,'denied calls never reached upstream');
     const activity = (await request('GET','/v2/activity')).data;
-    assert.equal(activity.events.length,2);
+    assert.equal(activity.events.length,3);
     assert.deepEqual(new Set(activity.events.map(item=>item.decision)),new Set(['allowed','denied']));
     assert.equal(JSON.stringify(activity).includes(upstreamSecret),false);
     const detail = (await request('GET',`/v2/activity/${activity.events.find(item=>item.decision==='allowed').id}`)).data;
@@ -152,6 +166,11 @@ test('account-owned proxy flow enforces policy, encrypts secrets, audits and rev
       expiresAt:new Date(Date.now()+86_400_000).toISOString() })).data;
     await database.query('INSERT INTO pact_grant_usage(grant_id,spent_minor) VALUES($1,3)',
       [migrationSource.id]);
+    assert.equal((await request('PATCH',`/v2/grants/${migrationSource.id}`,
+      { aggregateLimitMinor:'4' })).response.statusCode,400);
+    assert.equal((await request('PATCH',`/v2/grants/${migrationSource.id}`,
+      { expiresAt:new Date(Date.now()-86_400_000).toISOString() })).response.statusCode,400);
+    assert.equal((await request('GET',`/v2/grants/${migrationSource.id}`)).data.aggregate_limit_minor,'10');
     const migratingEndpoint = (await request('POST','/v2/endpoints',{ serviceId:service.id,
       grantId:migrationSource.id,policyId:policy.id,method:'GET',pathPattern:'/migration',
       costMinor:'1',currency:'USD' })).data;

@@ -1,4 +1,5 @@
-import { PrivyProvider, useLinkWithPasskey, usePrivy, useWallets } from '@privy-io/react-auth';
+import { getAccessToken, PrivyProvider, useLinkWithPasskey, usePrivy, useWallets } from '@privy-io/react-auth';
+import { request } from './api.js';
 import { defineChain } from 'viem';
 import { App, type WalletAdapter } from './main.js';
 import { ControlConsole } from './ControlConsole.js';
@@ -18,9 +19,15 @@ function WalletConsole() {
     login: () => login(), connectWallet: () => connectWallet(),
     logout: () => logout(),
     hasPasskey: user?.linkedAccounts.some(account => account.type === 'passkey') ?? false,
-    createPasskey: () => linkWithPasskey({ name: 'Pact Console' }) };
-  return window.location.pathname.startsWith('/legacy') ? <App walletAdapter={walletAdapter}/> :
-    <ControlConsole/>;
+    createPasskey: () => linkWithPasskey({ name: 'Pact Console' }),
+    getPrincipal:async()=>{
+      const token=await getAccessToken();if(!token) throw Error('Sign in to use your Pact account');
+      const account=await request('/v2/account',token);
+      if(account.verificationStatus!=='verified') throw Error('Enable Monad signing from the Account page first.');
+      return account.principalAddress as string;
+    } };
+  return window.location.pathname.startsWith('/legacy') ? <App key={user?.id ?? 'signed-out'} walletAdapter={walletAdapter}/> :
+    <ControlConsole key={user?.id ?? 'signed-out'}/>;
 }
 
 export default function PrivyConsole() {

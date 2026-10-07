@@ -13,7 +13,7 @@ export class PactHttpClient {
 
   async request<T = unknown>(method: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE', path: string,
     body?: unknown): Promise<T> {
-    if (!/^\/v1\/[A-Za-z0-9/_-]+$/.test(path)) throw new Error('Invalid API path');
+    if (!/^\/v1\/[A-Za-z0-9/_-]+$/.test(path) && path!=='/v2/agent/me') throw new Error('Invalid API path');
     const response = await this.fetcher(new URL(path, this.baseUrl), {
       method, redirect: 'error', signal: AbortSignal.timeout(15_000),
       headers: { Authorization: `Bearer ${this.token}`,
@@ -34,6 +34,7 @@ export class PactHttpClient {
 
   grant(grantId: bigint) { return this.request('GET', `/v1/grants/${grantId}`); }
   myAuthority() { return this.request('GET', '/v1/agent/me'); }
+  httpAuthority() { return this.request('GET','/v2/agent/me'); }
   quoteTransfer(intent: unknown) { return this.request('POST', '/v1/transfers/quote', intent); }
   prepareTransferReservation(intent: unknown, idempotencyKey: string) {
     return this.request('POST', '/v1/transfers/prepare-reservation', { intent, idempotencyKey });
@@ -85,15 +86,19 @@ export class PactHttpClient {
 
   /** Invoke a registered operation through Pact. This credential never signs an onchain action. */
   async proxy(agentId: string, serviceId: string, method: 'GET'|'POST'|'PUT'|'PATCH'|'DELETE',
-    path: string, payload?: unknown, approvalId?: string): Promise<unknown> {
+    path: string, payload?: unknown, approvalId?: string,
+    options: { query?: Record<string,string>; idempotencyKey?: string } = {}): Promise<unknown> {
     if (!/^[0-9a-f-]{36}$/i.test(agentId) || !/^[0-9a-f-]{36}$/i.test(serviceId) ||
         !/^\/(?!\/)[A-Za-z0-9/_~.:-]*$/.test(path) || path.includes('..'))
       throw new Error('Invalid proxy route');
     const url = new URL(`/v2/proxy/${agentId}/${serviceId}${path}`, this.baseUrl);
+    if (options.query) url.search = new URLSearchParams(options.query).toString();
+    if (method !== 'GET' && !options.idempotencyKey) throw new Error('Writes require an idempotencyKey; reuse it when retrying');
     const response = await this.fetcher(url, { method, redirect: 'error', signal: AbortSignal.timeout(15_000),
       headers: { Authorization: `Bearer ${this.token}`,
         ...(payload === undefined ? {} : { 'Content-Type': 'application/json' }),
-        ...(approvalId ? { 'X-Pact-Approval-Id': approvalId } : {}) },
+        ...(approvalId ? { 'X-Pact-Approval-Id': approvalId } : {}),
+        ...(options.idempotencyKey ? { 'X-Pact-Idempotency-Key': options.idempotencyKey } : {}) },
       ...(payload === undefined ? {} : { body: JSON.stringify(payload,
         (_key, value: unknown) => typeof value === 'bigint' ? value.toString() : value) }) });
     const raw = await response.text();

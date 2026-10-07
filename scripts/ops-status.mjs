@@ -16,9 +16,9 @@ try {
       body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'eth_blockNumber', params: [] }),
       signal: AbortSignal.timeout(5_000) }).then(response => response.json()),
   ]);
-  for (const service of ['worker', 'indexer']) {
+  for (const service of ['worker', 'indexer', ...(process.env.PACT_ENABLE_RUNNER === 'yes' ? ['runner'] : [])]) {
     const row = heartbeats.rows.find(item => item.service === service);
-    if (!row?.last_success_at || Date.now() - new Date(row.last_success_at).getTime() > maxAge * 1_000)
+    if (!row?.last_success_at || Date.now() - new Date(row.last_success_at).getTime() > (service === 'runner' ? Math.max(maxAge,180) : maxAge) * 1_000)
       faults.push(`${service}_stale`);
   }
   const head = BigInt(rpc.result);

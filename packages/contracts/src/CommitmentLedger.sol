@@ -49,7 +49,7 @@ contract CommitmentLedger {
     mapping(uint256 => Balance) public balances;
     mapping(uint256 => Reservation) public reservations;
     mapping(uint256 => uint256) public reclaimedChildCapacity;
-    mapping(bytes32 => bool) public usedIntent;
+    mapping(uint256 => mapping(bytes32 => bool)) public usedIntent;
     uint256 public nextReservationId = 1;
     address public registry;
     address public obligationManager;
@@ -124,12 +124,12 @@ contract CommitmentLedger {
         (, address agent,,,,,, uint256 singleLimit,, uint64 grantExpiry,,,) =
             IAuthorityReader(registry).getGrant(grantId);
         if (msg.sender != agent) revert Unauthorized();
-        if (intentHash == bytes32(0) || usedIntent[intentHash]) revert AlreadyUsed();
+        if (intentHash == bytes32(0) || usedIntent[grantId][intentHash]) revert AlreadyUsed();
         if (amount == 0 || (!liability && amount > singleLimit) || available(grantId) < amount) {
             revert InsufficientCapacity();
         }
         if (expiresAt <= block.timestamp || expiresAt > grantExpiry) revert InvalidReservation();
-        usedIntent[intentHash] = true;
+        usedIntent[grantId][intentHash] = true;
         balances[grantId].reserved += amount;
         id = nextReservationId++;
         reservations[id] = Reservation(grantId, intentHash, amount, expiresAt, false, liability);

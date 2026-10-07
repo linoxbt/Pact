@@ -36,3 +36,12 @@ test('HTTP SDK serializes bigint transfer intents as decimal strings', async () 
   });
   assert.deepEqual(await sdk.quoteTransfer(intent), { decision: 'ALLOW' });
 });
+
+test('execution simulation pins the block, account, sender, reservation and approval',async()=>{
+  let seen;
+  const sdk=new PactClient({getBlockNumber:async()=>99n,simulateContract:async call=>{seen=call;}},addresses);
+  const result=await sdk.simulateExecuteTransfer(intent,7n,'0x1234');
+  assert.equal(result.blockNumber,99n);
+  assert.equal(seen.address,addresses.account);assert.equal(seen.account,intent.agent);
+  assert.equal(seen.blockNumber,99n);assert.deepEqual(seen.args,[intent,7n,'0x1234']);
+});

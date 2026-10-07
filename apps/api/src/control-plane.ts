@@ -3,8 +3,8 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { encodeFunctionData, zeroAddress } from 'viem';
 import { PactAccountFactoryAbi } from '@pact/abis';
-import { AuthError, jsonSafe, type Owner } from '@pact/operations';
-import { endpointPath, grantInput, httpMethod, httpPolicyInput, upstreamOrigin } from '@pact/policies';
+import { enforceRequestLimit, AuthError, jsonSafe, type Owner } from '@pact/operations';
+import { economicConstraints, endpointPath, grantInput, httpMethod, httpPolicyInput, upstreamOrigin } from '@pact/policies';
 import type { ApiContext } from './server.js';
 
 const uuid = z.uuid();
@@ -14,7 +14,28 @@ const money = z.string().regex(/^(0|[1-9]\d*)$/);
 const fail = (code: string, status = 400): never => { throw new AuthError(code, status); };
 const hash = (value: string) => createHash('sha256').update(value).digest('hex');
 const pageSize = 30;
-const ownerId = (header: string | undefined, ctx: ApiContext) => ctx.ownerAuth!.authenticate(header);
+async function listPage(ctx:ApiContext, query:unknown, sql:string, parameters:unknown[], alias='') {
+  const {cursor}=z.object({cursor:z.string().max(300).optional()}).strict().parse(query);
+  let time:string|null=null;let id:string|null=null;
+  if(cursor) {
+    try { [time,id]=z.tuple([z.iso.datetime({offset:true}),uuid]).parse(JSON.parse(Buffer.from(cursor,'base64url').toString('utf8'))); }
+    catch { fail('INVALID_CURSOR'); }
+  }
+  const prefix=alias ? `${alias}.` : '';
+  const n=parameters.length;
+  const preciseSql=sql.replace(/^SELECT /,`SELECT to_char(${prefix}created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS cursor_time, `);
+  const result=await ctx.database.query<Record<string,unknown> & {id:string;created_at:Date;cursor_time:string}>(`${preciseSql}
+    AND ($${n+1}::timestamptz IS NULL OR (${prefix}created_at,${prefix}id)<($${n+1},$${n+2}::uuid))
+    ORDER BY ${prefix}created_at DESC,${prefix}id DESC LIMIT 101`,[...parameters,time,id]);
+  const rows=result.rows.slice(0,100);const last=rows.at(-1);
+  return {rows,nextCursor:result.rows.length>100 && last
+    ? Buffer.from(JSON.stringify([last.cursor_time,last.id])).toString('base64url') : null};
+}
+const ownerId = async (header: string | undefined, ctx: ApiContext) => {
+  const owner = await ctx.ownerAuth!.authenticate(header);
+  await enforceRequestLimit(ctx.database, `owner:${owner.id}`, 240);
+  return owner;
+};
 const audit = async (ctx: ApiContext, owner: Owner, action: string, details: Record<string, unknown>) => {
   // The control-table trigger writes the mandatory event atomically. This
   // richer event must not turn a committed mutation into a false API failure.
@@ -142,9 +163,9 @@ export function registerControlPlaneRoutes(app: FastifyInstance, ctx: ApiContext
   });
   app.get('/v2/agents', async request => {
     const owner = await ownerId(request.headers.authorization, ctx);
-    const rows = await ctx.database.query(
-      `SELECT * FROM pact_connected_agents WHERE owner_id=$1 ORDER BY created_at DESC LIMIT 100`, [owner.id]);
-    return { agents: jsonSafe(rows.rows) };
+    const {rows,nextCursor} = await listPage(ctx,request.query,
+      `SELECT * FROM pact_connected_agents WHERE owner_id=$1`, [owner.id],'');
+    return { nextCursor, agents: jsonSafe(rows) };
   });
   app.get('/v2/agents/:id', async request => jsonSafe(await getOwned(ctx, 'pact_connected_agents',
     (request.params as { id: string }).id, await ownerId(request.headers.authorization, ctx))));
@@ -173,22 +194,22 @@ export function registerControlPlaneRoutes(app: FastifyInstance, ctx: ApiContext
     const result = await ctx.database.query(
       `INSERT INTO pact_authority_grants
        (id,owner_id,agent_id,principal_address,name,resource_origins,actions,destination_origins,
-        currency,per_action_limit_minor,aggregate_limit_minor,approval_threshold_minor,starts_at,expires_at)
-       VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) RETURNING *`,
+        currency,per_action_limit_minor,aggregate_limit_minor,approval_threshold_minor,starts_at,expires_at,allowed_recipients)
+       VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15) RETURNING *`,
       [id, owner.id, input.agentId, principal.toLowerCase(), input.name, input.resourceOrigins,
         input.actions, input.destinationOrigins, input.currency, input.perActionLimitMinor,
-        input.aggregateLimitMinor, input.approvalThresholdMinor, input.startsAt, input.expiresAt]);
+        input.aggregateLimitMinor, input.approvalThresholdMinor, input.startsAt, input.expiresAt,input.allowedRecipients]);
     await audit(ctx, owner, 'grant.created', { grantId: id, agentId: input.agentId,
       principal, bounds: input, kind: 'offchain_http_only' });
     return jsonSafe({ ...result.rows[0] as object, authorityType: 'offchain_http_only' });
   });
   app.get('/v2/grants', async request => {
     const owner = await ownerId(request.headers.authorization, ctx);
-    const rows = await ctx.database.query(
+    const {rows,nextCursor} = await listPage(ctx,request.query,
       `SELECT g.*,COALESCE(u.spent_minor,0)::text AS spent_minor FROM pact_authority_grants g
        LEFT JOIN pact_grant_usage u ON u.grant_id=g.id WHERE g.owner_id=$1
-       ORDER BY g.created_at DESC LIMIT 100`, [owner.id]);
-    return { grants: jsonSafe(rows.rows), authorityType: 'offchain_http_only' };
+      `, [owner.id],'g');
+    return { nextCursor, grants: jsonSafe(rows), authorityType: 'offchain_http_only' };
   });
   app.get('/v2/grants/:id', async request => {
     const owner = await ownerId(request.headers.authorization, ctx);
@@ -199,6 +220,7 @@ export function registerControlPlaneRoutes(app: FastifyInstance, ctx: ApiContext
     const owner = await ownerId(request.headers.authorization, ctx);
     const grantId = uuid.parse((request.params as { id: string }).id);
     const input = z.object({ actions: z.array(methodSchema).min(1).optional(),
+      allowedRecipients:grantInput.shape.allowedRecipients.optional(),
       resourceOrigins: z.array(upstreamOrigin).min(1).optional(),
       destinationOrigins: z.array(upstreamOrigin).min(1).optional(),
       perActionLimitMinor: money.optional(), aggregateLimitMinor: money.optional(),
@@ -216,8 +238,21 @@ export function registerControlPlaneRoutes(app: FastifyInstance, ctx: ApiContext
       const old = current.rows[0];
       if (!old) throw new AuthError('NOT_FOUND', 404);
       if (old.status !== 'active') fail('GRANT_REVOKED', 409);
-      if (!subset(input.actions, old.actions) || !subset(input.resourceOrigins, old.resource_origins) ||
-          !subset(input.destinationOrigins, old.destination_origins) ||
+      const merged = grantInput.safeParse({
+        agentId: old.agent_id, name: old.name,
+        resourceOrigins: input.resourceOrigins ?? old.resource_origins,
+        destinationOrigins: input.destinationOrigins ?? old.destination_origins,
+        actions: input.actions ?? old.actions, currency: old.currency,
+        allowedRecipients:input.allowedRecipients ?? old.allowed_recipients,
+        perActionLimitMinor: input.perActionLimitMinor ?? old.per_action_limit_minor,
+        aggregateLimitMinor: input.aggregateLimitMinor ?? old.aggregate_limit_minor,
+        approvalThresholdMinor: input.approvalThresholdMinor ?? old.approval_threshold_minor,
+        startsAt: new Date(old.starts_at as string).toISOString(),
+        expiresAt: input.expiresAt ?? new Date(old.expires_at as string).toISOString(),
+      });
+      if (!merged.success) fail('INVALID_GRANT_BOUNDS');
+      if (!subset(input.allowedRecipients,old.allowed_recipients) || !subset(input.actions, old.actions) || !subset(input.resourceOrigins, (old.resource_origins as string[]).map(value=>new URL(value).origin)) ||
+          !subset(input.destinationOrigins, (old.destination_origins as string[]).map(value=>new URL(value).origin)) ||
           (input.perActionLimitMinor && BigInt(input.perActionLimitMinor) > BigInt(old.per_action_limit_minor as string)) ||
           (input.aggregateLimitMinor && BigInt(input.aggregateLimitMinor) > BigInt(old.aggregate_limit_minor as string)) ||
           (input.approvalThresholdMinor && BigInt(input.approvalThresholdMinor) > BigInt(old.approval_threshold_minor as string)) ||
@@ -229,11 +264,11 @@ export function registerControlPlaneRoutes(app: FastifyInstance, ctx: ApiContext
        per_action_limit_minor=COALESCE($5,per_action_limit_minor),
        aggregate_limit_minor=COALESCE($6,aggregate_limit_minor),
        approval_threshold_minor=COALESCE($7,approval_threshold_minor),
-       expires_at=COALESCE($8,expires_at),status=COALESCE($9,status),version=version+1,updated_at=now()
+       allowed_recipients=COALESCE($10,allowed_recipients),expires_at=COALESCE($8,expires_at),status=COALESCE($9,status),version=version+1,updated_at=now()
        WHERE id=$1 RETURNING *`,
       [grantId, input.actions ?? null, input.resourceOrigins ?? null, input.destinationOrigins ?? null,
         input.perActionLimitMinor ?? null, input.aggregateLimitMinor ?? null,
-        input.approvalThresholdMinor ?? null, input.expiresAt ?? null, input.status ?? null]);
+        input.approvalThresholdMinor ?? null, input.expiresAt ?? null, input.status ?? null,input.allowedRecipients ?? null]);
       await client.query(
         `INSERT INTO pact_audit_events(principal,actor,action,details) VALUES($1,$2,$3,$4)`,
         [owner.principalAddress ?? owner.did, owner.did, 'grant.narrowed',
@@ -269,10 +304,10 @@ export function registerControlPlaneRoutes(app: FastifyInstance, ctx: ApiContext
       const migrated = await client.query(
         `INSERT INTO pact_authority_grants
          (id,owner_id,agent_id,principal_address,name,resource_origins,actions,destination_origins,
-          currency,per_action_limit_minor,aggregate_limit_minor,approval_threshold_minor,starts_at,expires_at)
+          currency,per_action_limit_minor,aggregate_limit_minor,approval_threshold_minor,starts_at,expires_at,allowed_recipients)
          SELECT $2,owner_id,agent_id,$3,name,resource_origins,actions,destination_origins,
                 currency,per_action_limit_minor,aggregate_limit_minor,approval_threshold_minor,
-                starts_at,expires_at FROM pact_authority_grants WHERE id=$1 RETURNING *`,
+                starts_at,expires_at,allowed_recipients FROM pact_authority_grants WHERE id=$1 RETURNING *`,
         [grantId, migratedId, principal]);
       await client.query(
         `INSERT INTO pact_grant_usage(grant_id,spent_minor)
@@ -305,9 +340,9 @@ export function registerControlPlaneRoutes(app: FastifyInstance, ctx: ApiContext
   });
   app.get('/v2/policies', async request => {
     const owner = await ownerId(request.headers.authorization, ctx);
-    const rows = await ctx.database.query(
-      `SELECT * FROM pact_http_policies WHERE owner_id=$1 ORDER BY created_at DESC LIMIT 100`, [owner.id]);
-    return { policies: jsonSafe(rows.rows) };
+    const {rows,nextCursor} = await listPage(ctx,request.query,
+      `SELECT * FROM pact_http_policies WHERE owner_id=$1`, [owner.id],'');
+    return { nextCursor, policies: jsonSafe(rows) };
   });
   app.get('/v2/policies/:id', async request => jsonSafe(await getOwned(ctx, 'pact_http_policies',
     (request.params as { id: string }).id, await ownerId(request.headers.authorization, ctx))));
@@ -351,10 +386,10 @@ export function registerControlPlaneRoutes(app: FastifyInstance, ctx: ApiContext
   });
   app.get('/v2/services', async request => {
     const owner = await ownerId(request.headers.authorization, ctx);
-    const rows = await ctx.database.query(
+    const {rows,nextCursor} = await listPage(ctx,request.query,
       `SELECT s.*, EXISTS(SELECT 1 FROM pact_upstream_secrets x WHERE x.service_id=s.id)
-       AS has_secret FROM pact_services s WHERE s.owner_id=$1 ORDER BY created_at DESC LIMIT 100`, [owner.id]);
-    return { services: jsonSafe(rows.rows) };
+       AS has_secret FROM pact_services s WHERE s.owner_id=$1`, [owner.id],'s');
+    return { nextCursor, services: jsonSafe(rows) };
   });
   app.get('/v2/services/:id', async request => jsonSafe(await getOwned(ctx, 'pact_services',
     (request.params as { id: string }).id, await ownerId(request.headers.authorization, ctx))));
@@ -378,11 +413,16 @@ export function registerControlPlaneRoutes(app: FastifyInstance, ctx: ApiContext
     if (!cipher) throw new AuthError('CREDENTIAL_VAULT_UNAVAILABLE', 503);
     const { secret } = z.object({ secret: z.string().min(8).max(16_384) }).strict().parse(request.body);
     if (/[\r\n]/.test(secret)) fail('INVALID_SECRET');
-    const existing = await ctx.database.query<{ id: string }>(
+    const client = await ctx.database.connect();
+    try {
+    await client.query('BEGIN');
+    // Stable identity and serialized encryption prevent concurrent first-write AAD mismatch.
+    await client.query('SELECT id FROM pact_services WHERE id=$1 FOR UPDATE', [service.id]);
+    const existing = await client.query<{ id: string }>(
       'SELECT id FROM pact_upstream_secrets WHERE service_id=$1', [service.id]);
     const id = existing.rows[0]?.id ?? randomUUID();
     const sealed = await cipher.seal({ id, principal: owner.id, provider: `http:${service.id}` }, secret);
-    await ctx.database.query(
+    await client.query(
       `INSERT INTO pact_upstream_secrets
        (id,service_id,owner_id,ciphertext,encrypted_key,kms_key_id,cipher_version)
        VALUES($1,$2,$3,$4,$5,$6,$7)
@@ -391,8 +431,11 @@ export function registerControlPlaneRoutes(app: FastifyInstance, ctx: ApiContext
         cipher_version=excluded.cipher_version,updated_at=now()`,
       [id, service.id, owner.id, sealed.ciphertext, sealed.encryptedKey,
         sealed.kmsKeyId, sealed.version]);
+    await client.query('COMMIT');
     await audit(ctx, owner, 'service.secret.rotated', { serviceId: service.id, secretId: id });
     return { status: existing.rows[0] ? 'rotated' : 'stored' };
+    } catch (cause) { await client.query('ROLLBACK'); throw cause; }
+    finally { client.release(); }
   });
   app.delete('/v2/services/:id/secret', async request => {
     const owner = await ownerId(request.headers.authorization, ctx);
@@ -403,6 +446,7 @@ export function registerControlPlaneRoutes(app: FastifyInstance, ctx: ApiContext
   });
 
   const endpointInput = z.object({ serviceId: uuid, grantId: uuid, policyId: uuid,
+    economicConstraints:economicConstraints.nullable().default(null),
     method: httpMethod, pathPattern: endpointPath,
     description: z.string().max(500).default(''), costMinor: money.default('0'),
     currency: z.string().regex(/^[A-Z]{3,12}$/),
@@ -416,19 +460,20 @@ export function registerControlPlaneRoutes(app: FastifyInstance, ctx: ApiContext
         grant.status !== 'active' || policy.status !== 'active' ||
         input.currency !== grant.currency ||
         !(grant.actions as string[]).includes(input.method) ||
-        !(grant.resource_origins as string[]).includes(service.base_url as string) ||
-        !(grant.destination_origins as string[]).includes(service.base_url as string) ||
+        !(grant.resource_origins as string[]).some(value=>new URL(value).origin===new URL(service.base_url as string).origin) ||
+        !(grant.destination_origins as string[]).some(value=>new URL(value).origin===new URL(service.base_url as string).origin) ||
         BigInt(input.costMinor) > BigInt(grant.per_action_limit_minor as string))
       fail('ENDPOINT_OUTSIDE_AUTHORITY', 409);
+    if (input.economicConstraints && !(grant.allowed_recipients as string[]).length) fail('ECONOMIC_GRANT_RECIPIENTS_REQUIRED');
     const id = randomUUID();
     const rows = await ctx.database.query(
       `INSERT INTO pact_endpoints
        (id,service_id,agent_id,owner_id,grant_id,policy_id,method,path_pattern,
-        description,cost_minor,currency,response_fields)
-       VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING *`,
+        description,cost_minor,currency,response_fields,economic_constraints)
+       VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING *`,
       [id, service.id, service.agent_id, owner.id, grant.id, policy.id, input.method,
         input.pathPattern, input.description, input.costMinor, input.currency,
-        input.responseFields]);
+        input.responseFields,input.economicConstraints ? JSON.stringify(input.economicConstraints) : null]);
     await audit(ctx, owner, 'endpoint.created', { endpointId: id, serviceId: service.id,
       method: input.method, pathPattern: input.pathPattern });
     return jsonSafe(rows.rows[0]);
@@ -439,14 +484,14 @@ export function registerControlPlaneRoutes(app: FastifyInstance, ctx: ApiContext
   });
   app.get('/v2/endpoints', async request => {
     const owner = await ownerId(request.headers.authorization, ctx);
-    const rows = await ctx.database.query(
+    const {rows,nextCursor} = await listPage(ctx,request.query,
       `SELECT e.*,s.name AS service_name,s.base_url,a.name AS agent_name,
        p.name AS policy_name FROM pact_endpoints e
        JOIN pact_services s ON s.id=e.service_id
        JOIN pact_connected_agents a ON a.id=e.agent_id
        JOIN pact_http_policies p ON p.id=e.policy_id
-       WHERE e.owner_id=$1 ORDER BY e.created_at DESC LIMIT 100`, [owner.id]);
-    return { endpoints: jsonSafe(rows.rows) };
+       WHERE e.owner_id=$1`, [owner.id],'e');
+    return { nextCursor, endpoints: jsonSafe(rows) };
   });
   app.get('/v2/endpoints/:id', async request => jsonSafe(await getOwned(ctx, 'pact_endpoints',
     (request.params as { id: string }).id, await ownerId(request.headers.authorization, ctx))));
@@ -477,20 +522,45 @@ export function registerControlPlaneRoutes(app: FastifyInstance, ctx: ApiContext
     paths: z.record(z.string(), z.record(z.string(), z.unknown())) }).passthrough();
   const parseOpenApi = (spec: unknown) => {
     const doc = openApiInput.parse(spec);
-    const baseUrl = upstreamOrigin.parse(doc.servers[0]!.url);
+    const server = new URL(doc.servers[0]!.url);
+    if (server.username || server.password || server.search || server.hash) fail('OPENAPI_INVALID_SERVER');
+    const baseUrl = upstreamOrigin.parse(server.origin);
+    const basePath = server.pathname.replace(/\/$/,'');
+    const resolve = (value: unknown): Record<string,unknown> => {
+      let node = value;
+      for (let depth=0;depth<12;depth++) {
+        if (!node || typeof node!=='object' || Array.isArray(node)) fail('OPENAPI_INVALID_REFERENCE');
+        const object=node as Record<string,unknown>;
+        if (!object.$ref) return object;
+        if (typeof object.$ref!=='string' || !object.$ref.startsWith('#/')) fail('OPENAPI_REMOTE_REFERENCE_UNSUPPORTED');
+        node = doc;
+        for (const part of (object.$ref as string).slice(2).split('/'))
+          node = (node as Record<string,unknown> | undefined)?.[part.replace(/~1/g,'/').replace(/~0/g,'~')];
+      }
+      return fail('OPENAPI_REFERENCE_CYCLE');
+    };
     const operations: Array<{ method: string; pathPattern: string; description: string }> = [];
+    let requiresAuthentication = false;
     for (const [route, methods] of Object.entries(doc.paths)) {
-      const pathPattern = endpointPath.parse(route.replace(/\{([A-Za-z0-9_]+)\}/g, ':$1'));
-      for (const [verb, raw] of Object.entries(methods)) {
+      const pathPattern = endpointPath.parse((basePath+route).replace(/\{([A-Za-z0-9_]+)\}/g, ':$1'));
+      const resolvedMethods = resolve(methods);
+      if (resolvedMethods.servers) fail('OPENAPI_OPERATION_SERVERS_REQUIRE_MANUAL_REGISTRATION');
+      for (const [verb, raw] of Object.entries(resolvedMethods)) {
         const method = verb.toUpperCase();
         if (!httpMethod.safeParse(method).success) continue;
-        const entry = raw && typeof raw === 'object' ? raw as { summary?: unknown; description?: unknown } : {};
+        const entry = resolve(raw);
+        if (entry.servers) fail('OPENAPI_OPERATION_SERVERS_REQUIRE_MANUAL_REGISTRATION');
+        const security = entry.security ?? doc.security;
+        if (security !== undefined && !Array.isArray(security)) fail('OPENAPI_INVALID_SECURITY');
+        if (Array.isArray(security) && security.length && !security.some(item=>item && typeof item==='object' && Object.keys(item).length===0))
+          requiresAuthentication = true;
         operations.push({ method, pathPattern,
           description: String(entry.summary ?? entry.description ?? '').slice(0, 500) });
       }
     }
     if (!operations.length || operations.length > 50) fail('OPENAPI_OPERATION_COUNT_INVALID');
-    return { name: doc.info.title.slice(0, 100), baseUrl, operations };
+    return { name: doc.info.title.slice(0, 100), baseUrl, operations, requiresAuthentication,
+      review: 'JSON OpenAPI 3: first server, local references, HTTP operations. Configure credentials explicitly; request schemas are not imported as enforcement rules.' };
   };
   app.post('/v2/openapi/preview', async request => {
     await ownerId(request.headers.authorization, ctx);
@@ -503,13 +573,14 @@ export function registerControlPlaneRoutes(app: FastifyInstance, ctx: ApiContext
     const { spec, grantId, policyId, currency } = z.object({ spec: z.unknown(),
       grantId: uuid, policyId: uuid, currency: z.string().regex(/^[A-Z]{3,12}$/) }).strict().parse(request.body);
     const parsed = parseOpenApi(spec);
-    if (parsed.baseUrl !== service.base_url) fail('OPENAPI_ORIGIN_MISMATCH', 409);
+    if (parsed.requiresAuthentication && service.auth_method === 'none') fail('OPENAPI_AUTHENTICATION_REQUIRED');
+    if (parsed.baseUrl !== new URL(service.base_url as string).origin) fail('OPENAPI_ORIGIN_MISMATCH', 409);
     const grant = await getOwned(ctx, 'pact_authority_grants', grantId, owner);
     const policy = await getOwned(ctx, 'pact_http_policies', policyId, owner);
     if (service.agent_id !== grant.agent_id || service.agent_id !== policy.agent_id ||
         grant.status !== 'active' || policy.status !== 'active' || currency !== grant.currency ||
-        !(grant.resource_origins as string[]).includes(service.base_url as string) ||
-        !(grant.destination_origins as string[]).includes(service.base_url as string) ||
+        !(grant.resource_origins as string[]).some(value=>new URL(value).origin===new URL(service.base_url as string).origin) ||
+        !(grant.destination_origins as string[]).some(value=>new URL(value).origin===new URL(service.base_url as string).origin) ||
         !parsed.operations.every(operation => (grant.actions as string[]).includes(operation.method)))
       fail('ENDPOINT_OUTSIDE_AUTHORITY', 409);
     const client = await ctx.database.connect();
@@ -582,11 +653,11 @@ export function registerControlPlaneRoutes(app: FastifyInstance, ctx: ApiContext
   app.get('/v2/agents/:id/keys', async request => {
     const owner = await ownerId(request.headers.authorization, ctx);
     const agent = await getOwned(ctx, 'pact_connected_agents', (request.params as { id: string }).id, owner);
-    const rows = await ctx.database.query(
+    const {rows,nextCursor} = await listPage(ctx,request.query,
       `SELECT id,prefix,name,scopes,expires_at,last_used_at,revoked_at,rotated_from,created_at
-       FROM pact_integration_keys WHERE owner_id=$1 AND agent_id=$2 ORDER BY created_at DESC LIMIT 100`,
-      [owner.id, agent.id]);
-    return { keys: jsonSafe(rows.rows) };
+       FROM pact_integration_keys WHERE owner_id=$1 AND agent_id=$2`,
+      [owner.id, agent.id],'');
+    return { nextCursor, keys: jsonSafe(rows) };
   });
   app.get('/v2/keys/summary', async request => {
     const owner = await ownerId(request.headers.authorization, ctx);
@@ -632,8 +703,9 @@ export function registerControlPlaneRoutes(app: FastifyInstance, ctx: ApiContext
         [cursorTime, cursorId] = decoded;
       } catch { fail('INVALID_CURSOR'); }
     }
-    const rows = await ctx.database.query<{ id: string; created_at: Date }>(
-      `SELECT v.*,a.name AS agent_name,s.name AS service_name,p.name AS policy_name
+    const rows = await ctx.database.query<{ id: string; created_at: Date; cursor_time:string }>(
+      `SELECT v.*,to_char(v.created_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS cursor_time,
+        a.name AS agent_name,s.name AS service_name,p.name AS policy_name
        FROM pact_proxy_activity v JOIN pact_connected_agents a ON a.id=v.agent_id
        LEFT JOIN pact_services s ON s.id=v.service_id
        LEFT JOIN pact_http_policies p ON p.id=v.policy_id
@@ -650,7 +722,7 @@ export function registerControlPlaneRoutes(app: FastifyInstance, ctx: ApiContext
     const page = rows.rows.slice(0, pageSize);
     const last = page.at(-1);
     return { events: jsonSafe(page), nextCursor: hasMore && last ?
-      Buffer.from(JSON.stringify([last.created_at.toISOString(), last.id])).toString('base64url') : null,
+      Buffer.from(JSON.stringify([last.cursor_time, last.id])).toString('base64url') : null,
       retentionDays: 30, disclosure: 'private_gateway_log_not_onchain_receipt' };
   });
   app.get('/v2/activity/:id', async request => {
@@ -661,17 +733,27 @@ export function registerControlPlaneRoutes(app: FastifyInstance, ctx: ApiContext
   app.get('/v2/approvals', async request => {
     const owner = await ownerId(request.headers.authorization, ctx);
     await ctx.database.query(
-      `UPDATE pact_proxy_approvals SET state='expired' WHERE owner_id=$1 AND state='pending'
+      `UPDATE pact_proxy_approvals SET state='expired' WHERE owner_id=$1 AND state IN ('pending','approved')
        AND expires_at<=now()`, [owner.id]);
-    const rows = await ctx.database.query(
+    const {rows,nextCursor} = await listPage(ctx,request.query,
       `SELECT x.*,a.name AS agent_name,e.method,e.path_pattern,
               g.name AS grant_name,p.name AS policy_name FROM pact_proxy_approvals x
        JOIN pact_connected_agents a ON a.id=x.agent_id
        JOIN pact_endpoints e ON e.id=x.endpoint_id
        LEFT JOIN pact_authority_grants g ON g.id=x.grant_id
        LEFT JOIN pact_http_policies p ON p.id=x.policy_id
-       WHERE x.owner_id=$1 ORDER BY x.created_at DESC LIMIT 100`, [owner.id]);
-    return { approvals: jsonSafe(rows.rows) };
+       WHERE x.owner_id=$1`, [owner.id],'x');
+    return { nextCursor, approvals: jsonSafe(rows.map(({ sealed_intent, ...row }) =>
+      ({ ...row, intentAvailable: Boolean(sealed_intent) }))) };
+  });
+  app.get('/v2/approvals/:id/intent', async request => {
+    const owner = await ownerId(request.headers.authorization, ctx);
+    const record = await getOwned(ctx, 'pact_proxy_approvals', (request.params as {id:string}).id, owner);
+    if (!record.sealed_intent || !ctx.credentials) fail('APPROVAL_INTENT_UNAVAILABLE', 409);
+    const plain = await ctx.credentials!.open({ id: record.id, principal: owner.id,
+      provider: 'approval-intent' }, record.sealed_intent as Parameters<NonNullable<ApiContext['credentials']>['open']>[1]);
+    await audit(ctx, owner, 'proxy_approval.intent_disclosed', { approvalId: record.id });
+    return { intent: JSON.parse(plain) as unknown, requestHash: record.request_hash };
   });
   app.post('/v2/approvals/:id/decision', async request => {
     const owner = await ownerId(request.headers.authorization, ctx);

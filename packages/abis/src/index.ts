@@ -836,6 +836,11 @@ export const CommitmentLedgerAbi = [
     "inputs": [
       {
         "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "",
         "type": "bytes32",
         "internalType": "bytes32"
       }

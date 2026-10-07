@@ -2,8 +2,47 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { createDatabase, migrate } from '@pact/operations';
 import { PactIndexer } from '../dist/indexer.js';
+import { encodeEventTopics, encodeAbiParameters } from 'viem';
+import { PactAccountFactoryAbi } from '@pact/abis';
 
 const url = process.env.PACT_TEST_DATABASE_URL;
+
+test('historical catch-up bounds block RPC calls without skipping event validation',{skip:!url},async()=>{
+  const database=createDatabase(url);const chainId=1_100_000+Math.floor(Math.random()*100_000);const headers=[];
+  const rpc={getBlockNumber:async()=>100000n,getLogs:async()=>[],getBlock:async({blockNumber})=>{
+    headers.push(blockNumber);return {number:blockNumber,hash:`0x${blockNumber.toString(16).padStart(64,'0')}`};}};
+  try {
+    await migrate(database);
+    assert.equal(await new PactIndexer(database,rpc,chainId,['0x0000000000000000000000000000000000000001'],4090n,0,100n).tick(),4189n);
+    assert.deepEqual(headers,[4096n,4189n]);
+  } finally {await database.end();}
+});
+
+test('adding a factory replays old creation events and indexes account logs in the same batch', {skip:!url}, async()=>{
+  const database=createDatabase(url);
+  const chainId=1_000_000+Math.floor(Math.random()*100_000);
+  const address=n=>`0x${n.toString(16).padStart(40,'0')}`;
+  const hash=n=>`0x${n.toString(16).padStart(64,'0')}`;
+  const factory=address(1),account=address(2),principal=address(3);
+  const calls=[];
+  const created={address:factory,blockNumber:1n,blockHash:hash(1),transactionHash:hash(10),logIndex:0,
+    data:'0x',topics:encodeEventTopics({abi:PactAccountFactoryAbi,eventName:'AccountCreated',args:{principal,account}})};
+  const accountLog={address:account,blockNumber:1n,blockHash:hash(1),transactionHash:hash(10),logIndex:1,
+    data:encodeAbiParameters([{type:'uint256'}],[5n]),topics:[]};
+  const rpc={getBlockNumber:async()=>2n,getBlock:async({blockNumber})=>({number:blockNumber,hash:hash(Number(blockNumber))}),
+    getLogs:async request=>{calls.push(request);return request.address.includes(factory)?[created]:request.address.includes(account)?[accountLog]:[];}};
+  try {
+    await migrate(database);
+    await new PactIndexer(database,rpc,chainId,[address(9)],0n,0,10n).tick();
+    calls.length=0;
+    await new PactIndexer(database,rpc,chainId,[address(9)],0n,0,10n,factory).tick();
+    assert.equal(calls[0].fromBlock,0n);
+    assert.ok(calls.some(call=>call.address.includes(account) && call.fromBlock===0n));
+    const rows=(await database.query('SELECT address,principal FROM pact_indexed_accounts WHERE chain_id=$1',[chainId])).rows;
+    assert.deepEqual(rows,[{address:account,principal}]);
+    assert.equal((await database.query("SELECT count(*)::int n FROM pact_chain_events WHERE chain_id=$1 AND event_name='AccountCreated'",[chainId])).rows[0].n,1);
+  } finally {await database.end();}
+});
 
 test('indexer rolls back orphaned blocks and rebuilds the canonical cursor', { skip: !url }, async () => {
   const database = createDatabase(url);

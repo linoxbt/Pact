@@ -5,7 +5,7 @@ const origin = z.url().refine(value => {
   const url = new URL(value);
   return !url.username && !url.password && !url.search && !url.hash && url.pathname === '/' &&
     (url.protocol === 'https:' || url.protocol === 'http:');
-}, 'Use an origin such as https://api.example.com');
+}, 'Use an origin such as https://api.example.com').transform(value => new URL(value).origin);
 const decimal = z.string().regex(/^(0|[1-9]\d*)$/).refine(value => BigInt(value) <= 10n ** 36n);
 const path = z.string().min(1).max(240).regex(/^\/(?:[A-Za-z0-9._~/:*-]|%[0-9A-Fa-f]{2})*$/)
   .refine(value => !value.includes('..') && !/%2f|%5c|%2e/i.test(value));
@@ -14,6 +14,7 @@ export const grantInput = z.object({
   resourceOrigins: z.array(origin).min(1).max(20),
   actions: z.array(httpMethod).min(1).max(5),
   destinationOrigins: z.array(origin).min(1).max(20),
+  allowedRecipients: z.array(z.string().min(1).max(240)).max(100).default([]),
   currency: z.string().regex(/^[A-Z]{3,12}$/),
   perActionLimitMinor: decimal, aggregateLimitMinor: decimal,
   approvalThresholdMinor: decimal,
@@ -56,6 +57,25 @@ export type HttpPolicyInput = z.infer<typeof httpPolicyInput>;
 export const endpointPath = path;
 export const upstreamOrigin = origin;
 
+const fieldPath = z.string().regex(/^[A-Za-z][A-Za-z0-9_]*(?:\.[A-Za-z][A-Za-z0-9_]*){0,5}$/)
+  .refine(value=>!value.split('.').some(part=>['__proto__','prototype','constructor'].includes(part)));
+export const economicConstraints = z.object({amountPath:fieldPath,currencyPath:fieldPath,recipientPath:fieldPath}).strict();
+export function requestEconomics(spec: z.infer<typeof economicConstraints> | null, body: unknown,
+  declaredMinor: string, declaredCurrency: string, recipients: string[]) {
+  if (!spec) return {costMinor:BigInt(declaredMinor),currency:declaredCurrency,reason:null};
+  const field = (path:string):unknown => path.split('.').reduce<unknown>((value,key)=>
+    value && typeof value==='object' && !Array.isArray(value) && Object.hasOwn(value,key)
+      ? (value as Record<string,unknown>)[key] : undefined,body);
+  const amount=field(spec.amountPath),currency=field(spec.currencyPath),recipient=field(spec.recipientPath);
+  if (typeof amount!=='string' || !decimal.safeParse(amount).success)
+    return {costMinor:0n,currency:declaredCurrency,reason:'INVALID_REQUEST_AMOUNT_MINOR'};
+  if (typeof currency!=='string' || currency!==declaredCurrency)
+    return {costMinor:0n,currency:declaredCurrency,reason:'REQUEST_CURRENCY_DENIED'};
+  if (typeof recipient!=='string' || !recipients.includes(recipient))
+    return {costMinor:0n,currency:declaredCurrency,reason:'REQUEST_RECIPIENT_DENIED'};
+  return {costMinor:BigInt(amount),currency,reason:null};
+}
+
 export function pathMatches(pattern: string, candidate: string): boolean {
   const route = candidate.split('?')[0];
   if (!route || !route.startsWith('/') || route.includes('..') || /%2f|%5c|%2e/i.test(route)) return false;
@@ -80,7 +100,8 @@ export function evaluateHttpPolicy(input: {
   method: string; path: string; destination: string; costMinor: bigint; currency: string;
   now: Date; usage: (rule: HttpPolicyRule) => Usage;
 }): HttpDecision {
-  const { grant, policy, method, path, destination, costMinor, currency, now } = input;
+  const { grant, policy, method, path, costMinor, currency, now } = input;
+  const destination = new URL(input.destination).origin;
   const trace: DecisionTrace[] = [];
   const stop = (ruleId: string, name: string, reason: string): HttpDecision => {
     trace.push({ ruleId, name, result: 'deny', reason });

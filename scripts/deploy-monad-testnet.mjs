@@ -23,9 +23,12 @@ if (!principal || !isAddress(principal)) throw new Error('Set the human-controll
 if (balance === 0n) throw new Error('Fund the testnet deployer before broadcasting');
 
 const wallet = createWalletClient({ account, transport: http(rpcUrl) });
-const checkpointPath = resolve(root, '.secrets/monad-testnet-deployment.json');
+const release = process.env.PACT_DEPLOYMENT_RELEASE ?? '';
+if (release && !/^[a-z0-9-]{3,60}$/.test(release)) throw new Error('Invalid release name');
+const suffix = release ? `-${release}` : '';
+const checkpointPath = resolve(root, `.secrets/monad-testnet-deployment${suffix}.json`);
 const checkpoint = existsSync(checkpointPath) ? JSON.parse(readFileSync(checkpointPath, 'utf8')) :
-  { chainId, deployer: account.address, principal };
+  { chainId, deployer: account.address, principal, startBlock: (await rpc.getBlockNumber()).toString() };
 if (checkpoint.chainId !== chainId || checkpoint.deployer !== account.address ||
     checkpoint.principal.toLowerCase() !== principal.toLowerCase())
   throw new Error('Deployment checkpoint does not match chain, deployer and principal');
@@ -79,6 +82,7 @@ const configure = async (name, address, functionName, args) => {
 const ledger = await deploy('CommitmentLedger');
 const registry = await deploy('AuthorityRegistry', [ledger]);
 const accountAddress = await deploy('PactAccount', [principal, registry, ledger]);
+const accountFactory = await deploy('PactAccountFactory', [registry, ledger]);
 const manager = await deploy('ObligationManager', [registry, ledger]);
 const vault = await deploy('SettlementVault', [manager]);
 const receipts = await deploy('ReceiptRegistry', [manager]);
@@ -86,8 +90,14 @@ await configure('CommitmentLedger', ledger, 'configure', [registry]);
 await configure('CommitmentLedger', ledger, 'configureObligationManager', [manager]);
 await configure('ObligationManager', manager, 'configure', [vault, receipts]);
 const output = { chainId, deployer: account.address, principal, ledger, registry,
-  account: accountAddress, manager, vault, receipts, deployedAt: new Date().toISOString() };
+  account: accountAddress, accountFactory, manager, vault, receipts,
+  startBlock: checkpoint.startBlock, deployedAt: new Date().toISOString() };
 mkdirSync(resolve(root, 'deployments'), { recursive: true });
-writeFileSync(resolve(root, 'deployments/monad-testnet.json'), JSON.stringify(output, null, 2) + '\n',
-  { flag: 'wx' });
-console.log('Deployment manifest written to deployments/monad-testnet.json');
+const manifestPath=resolve(root, `deployments/monad-testnet${suffix}.json`);
+if (!existsSync(manifestPath)) writeFileSync(manifestPath, JSON.stringify(output, null, 2) + '\n', { flag: 'wx' });
+else {
+  const existing=JSON.parse(readFileSync(manifestPath,'utf8'));
+  for(const field of ['ledger','registry','account','accountFactory','manager','vault','receipts'])
+    if(existing[field]!==output[field]) throw new Error(`Existing manifest disagrees: ${field}`);
+}
+console.log(`Deployment manifest verified: ${manifestPath}`);

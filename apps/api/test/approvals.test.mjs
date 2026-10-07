@@ -27,6 +27,11 @@ test('approval inbox validates actor, signature, state and expiry', { skip: !url
       transferApprovalPayload: async () => ({ domain: { name: 'PactAccount', version: '1',
         chainId: 31337, verifyingContract: account }, types: { TransferApproval: [] },
         primaryType: 'TransferApproval', message: {} }) }, operations: {} };
+  const perUserPact = ctx.pact;
+  ctx.pact = { ...perUserPact, addresses:{account:'0x0000000000000000000000000000000000000099'},
+    forGrant:async id=>{assert.equal(id,BigInt(grantId));return perUserPact;},
+    verifyTransfer:async()=>{throw Error('global account must not verify user grant');},
+    transferApprovalPayload:async()=>{throw Error('global signing domain must not be used');} };
   try {
     await migrate(database);
     const app = await createApi(ctx);

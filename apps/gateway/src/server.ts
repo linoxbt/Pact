@@ -1,7 +1,7 @@
 import Fastify, { type FastifyInstance } from 'fastify';
 import helmet from '@fastify/helmet';
 import cors from '@fastify/cors';
-import { AuthError, type AuthService, type Database } from '@pact/operations';
+import { clientHttpError, enforceIngress, AuthError, type AuthService, type Database } from '@pact/operations';
 import { canonicalGatewayPolicy, hashGatewayPolicy, type GatewayPolicy } from '@pact/policies';
 import type { PactClient } from '@pact/sdk-ts';
 import type { SecretProvider } from '@pact/security';
@@ -23,16 +23,25 @@ const slug = /^[A-Za-z0-9][A-Za-z0-9_.-]{0,99}$/;
 export async function createGateway(ctx: GatewayContext): Promise<FastifyInstance> {
   const app = Fastify({ logger: { redact: ['req.headers.authorization', 'req.headers.cookie'],
     serializers: { req: request => ({ method: request.method,
-      url: request.url?.split('?')[0] ?? '', host: request.headers.host ?? '' }) } },
-    bodyLimit: 256 * 1024 });
+      route: request.routeOptions?.url ?? '[unmatched]'  }) } },
+    bodyLimit: 256 * 1024, connectionTimeout: 15_000, requestTimeout: 15_000 });
+  app.addHook('onRequest', async request => {
+    if (request.method !== 'OPTIONS' && request.url !== '/health')
+      await enforceIngress(ctx.database, request.ip, request.headers.authorization);
+  });
   await app.register(helmet);
   if (ctx.allowedOrigin) await app.register(cors, { origin: ctx.allowedOrigin,
     methods: ['GET','POST','PUT','PATCH','DELETE'],
-    allowedHeaders: ['Authorization','Content-Type','X-Pact-Approval-Id'],
+    allowedHeaders: ['Authorization','Content-Type','X-Pact-Approval-Id','X-Pact-Idempotency-Key'],
     exposedHeaders: ['X-Pact-Request-Id'] });
   app.setErrorHandler((cause, _request, reply) => {
-    if (cause instanceof AuthError) return reply.code(cause.statusCode).send({ error: cause.message });
-    app.log.error(cause);
+    if (cause instanceof AuthError) {
+      if (cause.statusCode === 429) reply.header('Retry-After','60');
+      return reply.code(cause.statusCode).send({ error: cause.message });
+    }
+    const clientError = clientHttpError(cause);
+    if (clientError) return reply.code(clientError.status).send({ error: clientError.code });
+    app.log.error({ name: cause instanceof Error ? cause.name : 'UnknownError' }, 'Request failed');
     return reply.code(502).send({ error: 'UPSTREAM_UNAVAILABLE' });
   });
   app.get('/health', async () => ({ status: 'ok' }));

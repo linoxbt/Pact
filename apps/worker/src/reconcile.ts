@@ -36,10 +36,19 @@ export class Reconciler {
 
   async tick(): Promise<number> {
     const result = await this.database.query<PendingRow>(
-      `SELECT id,actor,kind,action_hash,target_address,expected_event,grant_id,reservation_id,tx_hash,submitted_at
-       FROM pact_operations WHERE state IN ('submitted','recoverable') AND tx_hash IS NOT NULL
-       ORDER BY submitted_at LIMIT 100`);
-    for (const row of result.rows) await this.reconcile(row);
+      `WITH due AS (
+         SELECT id FROM pact_operations WHERE state IN ('submitted','recoverable') AND tx_hash IS NOT NULL
+           AND next_attempt_at<=now() ORDER BY next_attempt_at,submitted_at
+           LIMIT 100 FOR UPDATE SKIP LOCKED
+       ) UPDATE pact_operations o SET reconcile_attempts=reconcile_attempts+1,
+         next_attempt_at=now()+make_interval(secs=>LEAST(3600,30*power(2,LEAST(reconcile_attempts,7)))::integer)
+         FROM due WHERE o.id=due.id
+         RETURNING o.id,o.actor,o.kind,o.action_hash,o.target_address,o.expected_event,
+           o.grant_id,o.reservation_id,o.tx_hash,o.submitted_at`);
+    for (const row of result.rows) {
+      try { await this.reconcile(row); }
+      catch { await this.update(row,'recoverable','RECONCILIATION_RETRY'); }
+    }
     return result.rows.length;
   }
 

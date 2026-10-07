@@ -91,7 +91,7 @@ export function AgentWorkbench({ token, request, provider }: { token: string;
     const challenge = await request(`/v1/agents/${selected.id}/keys/challenge`, token,
       { name: keyName, scopes: keyScopes, expiresAt });
     const accounts = await provider()!.request({ method: 'eth_accounts' }) as string[];
-    if (!accounts[0]) throw Error('Connect the principal wallet');
+    if (!accounts[0]) throw Error('Authorize the signing wallet verified in Account settings');
     const signature = await provider()!.request({ method: 'personal_sign',
       params: [challenge.message, accounts[0]] });
     const result = await request(`/v1/agents/${selected.id}/keys`, token,
@@ -134,7 +134,7 @@ export function AgentWorkbench({ token, request, provider }: { token: string;
     const chain = await provider()!.request({ method: 'eth_chainId' }) as string;
     if (Number(BigInt(chain)) !== billing.chainId) throw Error('Switch wallet to the configured Monad testnet');
     const accounts = await provider()!.request({ method: 'eth_accounts' }) as string[];
-    if (!accounts[0]) throw Error('Connect the principal wallet');
+    if (!accounts[0]) throw Error('Authorize the signing wallet verified in Account settings');
     const data = encodeFunctionData({ abi: erc20Abi, functionName: 'transfer',
       args: [billing.treasury as `0x${string}`, units] });
     const hash = await provider()!.request({ method: 'eth_sendTransaction',

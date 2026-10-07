@@ -2,7 +2,8 @@ import { KMSClient } from '@aws-sdk/client-kms';
 import { GetSecretValueCommand, SecretsManagerClient } from '@aws-sdk/client-secrets-manager';
 import { createPublicClient, http } from 'viem';
 import { CredentialCipher, DeploymentSecretCipher } from '@pact/security';
-import { createDatabase, loadCoreConfig, migrate, modelChargeMicro } from '@pact/operations';
+import { createDatabase, loadCoreConfig, migrate, modelChargeMicro, writeHeartbeat } from '@pact/operations';
+import { randomUUID } from 'node:crypto';
 import { PactClient } from '@pact/sdk-ts';
 import { invokeModel, type ModelRequest } from './providers.js';
 
@@ -29,6 +30,8 @@ type BilledRun = Run & { funding_mode: 'byo' | 'pact'; input_rate_micro: number 
 type Credential = { id: string; ciphertext: string; encrypted_key: string;
   kms_key_id: string; cipher_version: number };
 let stopped = false;
+const instanceId = randomUUID();
+let lastHeartbeat = 0;
 const settle = async (run: BilledRun, state: 'succeeded' | 'failed',
   output?: string, inputTokens?: number, outputTokens?: number, errorCode?: string) => {
   const client = await database.connect();
@@ -85,6 +88,10 @@ const providerSecret = async (run: BilledRun): Promise<string> => {
 for (const signal of ['SIGINT', 'SIGTERM'] as const) process.once(signal, () => { stopped = true; });
 let lastReap = 0;
 while (!stopped) {
+  if (Date.now() - lastHeartbeat > 10_000) {
+    await writeHeartbeat(database, 'runner', instanceId, true);
+    lastHeartbeat = Date.now();
+  }
   if (Date.now() - lastReap > 60_000) {
     lastReap = Date.now();
     const stale = await database.query<BilledRun>(

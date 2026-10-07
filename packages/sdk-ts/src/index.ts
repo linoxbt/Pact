@@ -67,6 +67,13 @@ export class PactClient {
       args: [intent, reservationId, approval] as const };
   }
 
+  async simulateExecuteTransfer(intent: TransferIntent, reservationId: bigint, approval: Hex = '0x') {
+    const blockNumber = await this.rpc.getBlockNumber();
+    const call = this.prepareExecuteTransfer(intent,reservationId,approval);
+    await this.rpc.simulateContract({...call,account:intent.agent,blockNumber});
+    return {success:true as const,blockNumber,account:this.addresses.account};
+  }
+
   async transferApprovalPayload(intent: TransferIntent, reservationId: bigint) {
     const chainId = await this.rpc.getChainId();
     return { domain: pactDomain(chainId, this.addresses.account), types: transferApprovalTypes,

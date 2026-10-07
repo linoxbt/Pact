@@ -40,9 +40,10 @@ export function registerApprovalRoutes(app: FastifyInstance, ctx: ApiContext): v
         session.address.toLowerCase() !== input.intent.agent.toLowerCase()) deny('AGENT_SCOPE_DENIED');
     const grant = await ctx.pact.grant(input.intent.grantId);
     if (grant.principal.toLowerCase() !== session.principal.toLowerCase()) deny('GRANT_SCOPE_DENIED');
-    const proof = await ctx.pact.verifyTransfer(input.intent, input.reservationId);
+    const grantPact = await ctx.pact.forGrant(input.intent.grantId);
+    const proof = await grantPact.verifyTransfer(input.intent, input.reservationId);
     if (proof.reason !== 'APPROVAL_REQUIRED') deny(proof.reason === 'OK' ? 'APPROVAL_NOT_REQUIRED' : proof.reason);
-    const hash = hashTransferIntent(await ctx.rpc.getChainId(), ctx.pact.addresses.account, input.intent);
+    const hash = hashTransferIntent(await ctx.rpc.getChainId(), grantPact.addresses.account, input.intent);
     const intent = jsonSafe(input.intent);
     const result = await ctx.database.query<ApprovalRow>(
       `INSERT INTO pact_approval_requests
@@ -86,9 +87,10 @@ export function registerApprovalRoutes(app: FastifyInstance, ctx: ApiContext): v
     const grant = await ctx.pact.grant(intent.grantId);
     if (!grant.active || grant.principal.toLowerCase() !== session.principal.toLowerCase())
       deny('GRANT_INACTIVE');
-    const proof = await ctx.pact.verifyTransfer(intent, BigInt(record.reservation_id));
+    const grantPact = await ctx.pact.forGrant(intent.grantId);
+    const proof = await grantPact.verifyTransfer(intent, BigInt(record.reservation_id));
     if (proof.reason !== 'APPROVAL_REQUIRED') deny(proof.reason);
-    const payload = await ctx.pact.transferApprovalPayload(intent, BigInt(record.reservation_id));
+    const payload = await grantPact.transferApprovalPayload(intent, BigInt(record.reservation_id));
     if (!await ctx.rpc.verifyTypedData({ address: grant.principal, signature: input.signature, ...payload }))
       deny('INVALID_APPROVAL_SIGNATURE');
     const result = await ctx.database.query<ApprovalRow>(

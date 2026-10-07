@@ -1,0 +1,14 @@
+{
+  "chainId": 10143,
+  "deployer": "0xF08F03B322CC928e4Be06A91e13a4E910196ae26",
+  "principal": "0xc759e906a02825d483714b8141758f6258145572",
+  "ledger": "0x3737354490d80e5b9a0d2df7659c258e58ec6280",
+  "registry": "0xa3f2ea05d4abc6eac5a8d71ad8773ce86684c2f1",
+  "account": "0x567446ce64fb2e602fce608157a97335712b4151",
+  "accountFactory": "0xaa649b4588170f05b8b50f2ae4c6ffb616ad0438",
+  "manager": "0x4c0a2869758aa57e01d47b42ebd37e59defb12a0",
+  "vault": "0x4926e9ed8b9d732b863cae9715ff5dd85046b086",
+  "receipts": "0x29fcfe26e9dad431e7b14d3a826c076c3284d98f",
+  "startBlock": "69041081",
+  "deployedAt": "2026-10-07T18:26:14.983Z"
+}

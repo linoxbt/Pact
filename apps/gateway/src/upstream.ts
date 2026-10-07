@@ -15,11 +15,20 @@ for (const [subnet, prefix] of [
 
 export type UpstreamResult = { status: number; contentType: string; body: Buffer };
 export async function forwardUpstream(url: URL, method: string, headers: Record<string,string>,
-  body: Buffer, allowLocal = false): Promise<UpstreamResult> {
+  body: Buffer, allowLocal = false, timeoutMs = 10_000): Promise<UpstreamResult> {
   if (url.username || url.password || url.hash ||
       !(url.protocol === 'https:' || (allowLocal && url.protocol === 'http:')))
     throw new Error('UPSTREAM_ORIGIN_NOT_ALLOWED');
-  const resolved = await lookup(url.hostname, { all: true, verbatim: true });
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(new Error('UPSTREAM_TIMEOUT')), timeoutMs);
+  let abortLookup: (() => void) | undefined;
+  try {
+  const resolved = await Promise.race([lookup(url.hostname, { all: true, verbatim: true }),
+    new Promise<never>((_resolve, reject) => {
+      abortLookup = () => reject(new Error('UPSTREAM_TIMEOUT'));
+      controller.signal.addEventListener('abort', abortLookup, { once: true });
+    })]);
+  if (abortLookup) controller.signal.removeEventListener('abort', abortLookup);
   if (!resolved.length || resolved.some(item => !allowLocal && blocked.check(item.address,
     item.family === 4 ? 'ipv4' : 'ipv6')))
     throw new Error('UPSTREAM_ADDRESS_NOT_ALLOWED');
@@ -27,10 +36,10 @@ export async function forwardUpstream(url: URL, method: string, headers: Record<
       resolved.some(item => blocked.check(item.address, item.family === 4 ? 'ipv4' : 'ipv6')))
     throw new Error('UPSTREAM_ADDRESS_NOT_ALLOWED');
   const address = resolved[0]!;
-  return new Promise((resolve, reject) => {
+  return await new Promise((resolve, reject) => {
     const requester = url.protocol === 'https:' ? httpsRequest : httpRequest;
     const req = requester(url, {
-      method, headers, timeout: 10_000, maxHeaderSize: 16_384,
+      method, headers, signal: controller.signal, timeout: timeoutMs, maxHeaderSize: 16_384,
       lookup: (_hostname, _options, callback) => callback(null, address.address, address.family),
     }, response => {
       const status = response.statusCode ?? 502;
@@ -49,8 +58,12 @@ export async function forwardUpstream(url: URL, method: string, headers: Record<
         body: Buffer.concat(chunks) }));
     });
     req.on('timeout', () => req.destroy(new Error('UPSTREAM_TIMEOUT')));
-    req.on('error', reject);
+    req.on('error', cause => reject(controller.signal.aborted ? new Error('UPSTREAM_TIMEOUT') : cause));
     if (body.length) req.write(body);
     req.end();
   });
+  } finally {
+    clearTimeout(timer);
+    if (abortLookup) controller.signal.removeEventListener('abort', abortLookup);
+  }
 }

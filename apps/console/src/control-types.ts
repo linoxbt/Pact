@@ -1,0 +1,23 @@
+import type {HttpPolicyRule, DecisionTrace} from '@pact/policies';
+
+export type Account = {id:string;principalAddress:string|null;verificationStatus:'account_assigned'|'verified'|'unverified';
+  onchainAccount:string|null;onchainStatus:string};
+export type Agent = {id:string;name:string;environment:string;description:string;status:string};
+export type Grant = {id:string;agent_id:string;name:string;principal_address:string;status:string;
+  actions:string[];resource_origins:string[];destination_origins:string[];allowed_recipients:string[];
+  currency:string;per_action_limit_minor:string;aggregate_limit_minor:string;approval_threshold_minor:string;
+  spent_minor:string;starts_at:string;expires_at:string};
+export type Service = {id:string;agent_id:string;name:string;base_url:string;auth_method:string;auth_header:string|null;
+  status:string;has_secret:boolean};
+export type Policy = {id:string;agent_id:string;name:string;status:string;rules:HttpPolicyRule[];version:number};
+export type Endpoint = {id:string;agent_id:string;service_id:string;grant_id:string;policy_id:string;description:string;
+  service_name:string;agent_name:string;policy_name:string;method:string;path_pattern:string;base_url:string;status:string;
+  cost_minor:string;currency:string;response_fields:string[];last_used_at:string|null};
+export type IntegrationKey = {id:string;name:string;prefix:string;scopes:string[];expires_at:string;last_used_at:string|null;revoked_at:string|null};
+export type Approval = {id:string;agent_name:string;method:string;path_pattern:string;policy_name:string;policy_id:string;
+  matched_rule:string;cost_minor:string;currency:string;request_hash:string;expires_at:string;state:string;reason:string;grant_name:string;grant_id:string};
+export type Activity = {id:string;agent_id:string;agent_name:string;key_id:string;grant_id:string|null;policy_id:string|null;
+  approval_id:string|null;created_at:string;method:string;route:string;decision:string;matched_rule:string|null;reason:string;
+  upstream_status:number|null;latency_ms:number|null;execution_state:string|null;trace:DecisionTrace[]};
+export type AuditEvent = {id:string;created_at:string;action:string;actor:string;details:Record<string,unknown>};
+export type OpenApiPreview = {origin:string;operations:{method:string;pathPattern:string;description:string}[]};

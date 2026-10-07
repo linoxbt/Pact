@@ -22,6 +22,18 @@ test('MCP validates input and forwards only scoped Pact calls', async () => {
   } finally { await client.close(); await server.close(); }
 });
 
+test('gateway-only MCP advertises only its usable authority and proxy tools',async()=>{
+  const server=createPactMcp({legacy:false,get:async()=>{throw Error('legacy');},post:async()=>{throw Error('legacy');},
+    authority:async()=>({agentId:'agent'}),proxy:async()=>({ok:true})});
+  const client=new Client({name:'gateway-test',version:'1.0.0'});
+  const [ct,st]=InMemoryTransport.createLinkedPair();
+  try {
+    await server.connect(st);await client.connect(ct);
+    assert.deepEqual((await client.listTools()).tools.map(t=>t.name).sort(),['pact_http_authority','pact_proxy_request']);
+    assert.equal((await client.callTool({name:'pact_http_authority',arguments:{}})).isError,undefined);
+  } finally {await client.close();await server.close();}
+});
+
 test('MCP HTTP transport rejects redirects and does not return bearer token', async () => {
   let request;
   const api = pactHttpApi('https://pact.example', 'private-token', async (url, options) => {

@@ -7,14 +7,14 @@ import re
 from typing import Any, Callable
 from urllib.error import HTTPError
 from urllib.parse import urlencode, urlparse
-from urllib.request import Request, urlopen
+from urllib.request import Request
 
-from .client import PactApiError
+from .client import PactApiError, _open
 
 
 class PactControlClient:
     def __init__(self, base_url: str, access_token: str, *, timeout: float = 10,
-                 transport: Callable[..., Any] = urlopen):
+                 transport: Callable[..., Any] = _open):
         origin = urlparse(base_url)
         if (origin.scheme != "https" and not (origin.scheme == "http" and
                 origin.hostname in {"localhost", "127.0.0.1", "::1"})) or origin.path not in {"", "/"}:
@@ -51,23 +51,27 @@ class PactControlClient:
             raise PactApiError(error.code, code) from error
 
     def account(self): return self.request("GET", "/v2/account")
-    def agents(self): return self.request("GET", "/v2/agents")
+    def agents(self, cursor: str | None = None):
+        return self.request("GET", "/v2/agents" + ("?" + urlencode({"cursor": cursor}) if cursor else ""))
     def create_agent(self, name: str, environment: str, description: str = ""):
         return self.request("POST", "/v2/agents", {"name": name, "environment": environment,
                                                   "description": description})
     def update_agent(self, agent_id: str, patch: dict[str, Any]):
         return self.request("PATCH", f"/v2/agents/{agent_id}", patch)
-    def grants(self): return self.request("GET", "/v2/grants")
+    def grants(self, cursor: str | None = None):
+        return self.request("GET", "/v2/grants" + ("?" + urlencode({"cursor": cursor}) if cursor else ""))
     def create_grant(self, grant: dict[str, Any]): return self.request("POST", "/v2/grants", grant)
     def narrow_grant(self, grant_id: str, patch: dict[str, Any]):
         return self.request("PATCH", f"/v2/grants/{grant_id}", patch)
     def migrate_grant(self, grant_id: str):
         return self.request("POST", f"/v2/grants/{grant_id}/migrate", {})
-    def policies(self): return self.request("GET", "/v2/policies")
+    def policies(self, cursor: str | None = None):
+        return self.request("GET", "/v2/policies" + ("?" + urlencode({"cursor": cursor}) if cursor else ""))
     def create_policy(self, policy: dict[str, Any]): return self.request("POST", "/v2/policies", policy)
     def update_policy(self, policy_id: str, patch: dict[str, Any]):
         return self.request("PATCH", f"/v2/policies/{policy_id}", patch)
-    def services(self): return self.request("GET", "/v2/services")
+    def services(self, cursor: str | None = None):
+        return self.request("GET", "/v2/services" + ("?" + urlencode({"cursor": cursor}) if cursor else ""))
     def create_service(self, service: dict[str, Any]): return self.request("POST", "/v2/services", service)
     def update_service(self, service_id: str, patch: dict[str, Any]):
         return self.request("PATCH", f"/v2/services/{service_id}", patch)
@@ -75,7 +79,8 @@ class PactControlClient:
         return self.request("PUT", f"/v2/services/{service_id}/secret", {"secret": secret})
     def revoke_service_secret(self, service_id: str):
         return self.request("DELETE", f"/v2/services/{service_id}/secret")
-    def endpoints(self): return self.request("GET", "/v2/endpoints")
+    def endpoints(self, cursor: str | None = None):
+        return self.request("GET", "/v2/endpoints" + ("?" + urlencode({"cursor": cursor}) if cursor else ""))
     def create_endpoint(self, endpoint: dict[str, Any]):
         return self.request("POST", "/v2/endpoints", endpoint)
     def update_endpoint(self, endpoint_id: str, patch: dict[str, Any]):
@@ -84,7 +89,8 @@ class PactControlClient:
         return self.request("POST", "/v2/openapi/preview", {"spec": spec})
     def import_openapi(self, service_id: str, options: dict[str, Any]):
         return self.request("POST", f"/v2/services/{service_id}/import", options)
-    def keys(self, agent_id: str): return self.request("GET", f"/v2/agents/{agent_id}/keys")
+    def keys(self, agent_id: str, cursor: str | None = None):
+        return self.request("GET", f"/v2/agents/{agent_id}/keys" + ("?" + urlencode({"cursor": cursor}) if cursor else ""))
     def issue_key(self, agent_id: str, name: str, scopes: list[str], expires_at: str):
         return self.request("POST", f"/v2/agents/{agent_id}/keys",
                             {"name": name, "scopes": scopes, "expiresAt": expires_at})
@@ -92,7 +98,10 @@ class PactControlClient:
         return self.request("POST", f"/v2/agents/{agent_id}/keys/{key_id}/rotate", {})
     def revoke_key(self, agent_id: str, key_id: str):
         return self.request("DELETE", f"/v2/agents/{agent_id}/keys/{key_id}")
-    def approvals(self): return self.request("GET", "/v2/approvals")
+    def approvals(self, cursor: str | None = None):
+        return self.request("GET", "/v2/approvals" + ("?" + urlencode({"cursor": cursor}) if cursor else ""))
+    def approval_intent(self, approval_id: str):
+        return self.request("GET", f"/v2/approvals/{approval_id}/intent")
     def decide_approval(self, approval_id: str, decision: str):
         return self.request("POST", f"/v2/approvals/{approval_id}/decision", {"decision": decision})
     def activity(self, filters: dict[str, str] | None = None):

@@ -7,7 +7,7 @@ import uuid
 from dataclasses import asdict, dataclass
 from typing import Any, Callable
 from urllib.error import HTTPError, URLError
-from urllib.parse import urlparse
+from urllib.parse import urlparse, urlencode
 from urllib.request import HTTPRedirectHandler, Request, build_opener
 
 
@@ -147,6 +147,9 @@ class PactClient:
             body["grantId"] = _decimal(grant_id, "grant_id")
         return self._request("POST", "/v1/auth/challenge", body)
 
+    def http_authority(self) -> dict[str, Any]:
+        return self._request("GET", "/v2/agent/me")
+
     def session(self, nonce: str, signature: str) -> dict[str, Any]:
         return self._request("POST", "/v1/auth/session", {"nonce": nonce, "signature": signature})
 
@@ -226,14 +229,23 @@ class PactClient:
         return self._request("GET", f"/v1/agents/{uuid.UUID(agent_id)}/runs/{uuid.UUID(run_id)}")
 
     def proxy(self, agent_id: str, service_id: str, method: str, path: str,
-              body: dict[str, Any] | None = None, approval_id: str | None = None) -> dict[str, Any] | str:
+              body: dict[str, Any] | None = None, approval_id: str | None = None, *,
+              query: dict[str, str] | None = None, idempotency_key: str | None = None) -> dict[str, Any] | str:
         """Call a registered HTTP operation with a scoped integration key."""
         if method not in {"GET", "POST", "PUT", "PATCH", "DELETE"}:
             raise ValueError("invalid proxy method")
         if not path.startswith("/") or path.startswith("//") or ".." in path or "?" in path or "#" in path:
             raise ValueError("invalid proxy path")
         route = f"/v2/proxy/{uuid.UUID(agent_id)}/{uuid.UUID(service_id)}{path}"
+        if query:
+            route += "?" + urlencode(query)
+        if method != "GET" and not idempotency_key:
+            raise ValueError("writes require an idempotency_key; reuse it when retrying")
         headers = {"Accept": "application/json"}
+        if idempotency_key:
+            if not all(c.isascii() and (c.isalnum() or c in "_-") for c in idempotency_key) or not 8 <= len(idempotency_key) <= 100:
+                raise ValueError("invalid idempotency_key")
+            headers["X-Pact-Idempotency-Key"] = idempotency_key
         if not self.token:
             raise ValueError("scoped integration key required")
         headers["Authorization"] = f"Bearer {self.token}"

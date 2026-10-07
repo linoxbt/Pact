@@ -1,3 +1,5 @@
+> Historical 2026-10-04 baseline. See [current remediation evidence](REMEDIATION_2026_10.md) for the October 7 fixes, deployments and remaining operator gates.
+
 # Remediation status (2026-10-04)
 
 This records implementation evidence and remaining release blockers. A passing test suite proves only the covered behavior; it does not establish that the live testnet deployment or production cloud controls are complete.

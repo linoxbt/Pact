@@ -34,3 +34,7 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm check
       - run: pnpm test
+      - name: Console integration (isolated test identity)
+        run: node apps/console/test/browser.mjs
+        env:
+          CHROME_PATH: /usr/bin/google-chrome
