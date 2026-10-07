@@ -6,6 +6,11 @@ import { jsonSafe, type Database } from '@pact/operations';
 const allAbis = [...AuthorityRegistryAbi, ...CommitmentLedgerAbi, ...PactAccountAbi,
   ...ObligationManagerAbi, ...SettlementVaultAbi, ...ReceiptRegistryAbi] as const;
 type Cursor = { block_number: string; block_hash: Hex };
+// Sparse historical checkpoints bound disk use without losing the ability to
+// find an ancestor after a deep reorg. Keep a dense recent window for fast
+// normal rollback; older gaps are replayed from the last common checkpoint.
+const checkpointInterval = 4096n;
+const recentWindow = 256n;
 
 export function decodePactEvent(log: { data: Hex; topics: readonly Hex[] }) {
   if (log.topics.length === 0) return null;
@@ -84,6 +89,10 @@ export class PactIndexer {
          ON CONFLICT (chain_id) DO UPDATE SET block_number=excluded.block_number,
            block_hash=excluded.block_hash,updated_at=now()`,
         [this.chainId, to.toString(), blocks.at(-1)!.hash]);
+      await client.query(
+        `DELETE FROM pact_indexer_blocks WHERE chain_id=$1 AND block_number<$2
+         AND block_number % $3 <> 0`,
+        [this.chainId, (to - recentWindow + 1n).toString(), checkpointInterval.toString()]);
       await client.query('COMMIT');
     } catch (error) { await client.query('ROLLBACK'); throw error; }
     finally { client.release(); }

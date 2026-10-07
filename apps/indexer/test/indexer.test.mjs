@@ -28,3 +28,26 @@ test('indexer rolls back orphaned blocks and rebuilds the canonical cursor', { s
     assert.equal(blocks.rows[2].block_hash, hashes.get(2n));
   } finally { await database.end(); }
 });
+
+test('indexer retains sparse checkpoints and a dense recent reorg window',
+  { skip: !url }, async () => {
+    const database = createDatabase(url);
+    const chainId = 900_000 + Math.floor(Math.random() * 100_000);
+    const hash = number => `0x${number.toString(16).padStart(64, '0')}`;
+    const rpc = { getBlockNumber: async () => 4399n,
+      getBlock: async ({ blockNumber }) => ({ number: blockNumber, hash: hash(blockNumber) }),
+      getLogs: async () => [] };
+    try {
+      await migrate(database);
+      const indexer = new PactIndexer(database, rpc, chainId,
+        ['0x0000000000000000000000000000000000000001'], 4090n, 0, 310n);
+      assert.equal(await indexer.tick(), 4399n);
+      const rows = await database.query(
+        'SELECT block_number FROM pact_indexer_blocks WHERE chain_id=$1 ORDER BY block_number',
+        [chainId]);
+      assert.equal(rows.rows.length, 257);
+      assert.equal(rows.rows[0].block_number, '4096');
+      assert.equal(rows.rows[1].block_number, '4144');
+      assert.equal(rows.rows.at(-1).block_number, '4399');
+    } finally { await database.end(); }
+  });
