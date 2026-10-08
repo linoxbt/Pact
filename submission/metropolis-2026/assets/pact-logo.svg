@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" role="img" aria-labelledby="title desc">
+  <title id="title">Pact logo</title>
+  <desc id="desc">Mint hexagonal authority mark on a deep green rounded square.</desc>
+  <rect width="1024" height="1024" rx="216" fill="#163b30"/>
+  <path d="M512 145 813 319v386L512 879 211 705V319Z" fill="none" stroke="#baf4ce" stroke-width="30" stroke-linejoin="round"/>
+  <path d="m512 305 163 94v226l-163 94-163-94V399Z" fill="#baf4ce"/>
+</svg>
