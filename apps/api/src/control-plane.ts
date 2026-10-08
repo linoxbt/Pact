@@ -666,6 +666,15 @@ export function registerControlPlaneRoutes(app: FastifyInstance, ctx: ApiContext
        FROM pact_integration_keys WHERE owner_id=$1`, [owner.id]);
     return { active: Number(rows.rows[0]?.active ?? 0) };
   });
+  app.get('/v2/keys/:id', async request => {
+    const owner = await ownerId(request.headers.authorization, ctx);
+    const id=uuid.parse((request.params as {id:string}).id);
+    const result=await ctx.database.query(`SELECT id,agent_id,prefix,name,scopes,expires_at,
+      last_used_at,revoked_at,rotated_from,created_at FROM pact_integration_keys
+      WHERE id=$1 AND owner_id=$2`,[id,owner.id]);
+    if(!result.rows[0]) fail('NOT_FOUND',404);
+    return jsonSafe(result.rows[0]);
+  });
   app.post('/v2/agents/:id/keys/:keyId/rotate', async request => {
     const owner = await ownerId(request.headers.authorization, ctx);
     const agent = await getOwned(ctx, 'pact_connected_agents', (request.params as { id: string }).id, owner);

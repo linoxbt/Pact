@@ -4,12 +4,15 @@ import { getAccessToken, useConnectWallet, useLinkWithPasskey, usePrivy, useWall
 import { Brand, Icon } from './ui.js';
 import './control.css';
 import { VerificationPanel } from './VerificationPanel.js';
+import { Dashboard, type WorkspaceView } from './Dashboard.js';
+import { ResourceDetail } from './ResourceDetail.js';
+import './dashboard.css';
 
 const apiOrigin = import.meta.env.VITE_PACT_API_URL as string | undefined;
 const gatewayOrigin = import.meta.env.VITE_PACT_GATEWAY_URL as string | undefined;
-import type {Account,Agent,Grant,Service,Policy,Endpoint,IntegrationKey,Approval,Activity,AuditEvent,OpenApiPreview} from './control-types.js';
+import type {Account,Agent,Grant,Service,Policy,Endpoint,IntegrationKey,Approval,Activity,AuditEvent,OpenApiPreview,DashboardData} from './control-types.js';
 type Item = Record<string, unknown>;
-type View = 'overview'|'agents'|'grants'|'endpoints'|'policies'|'keys'|'approvals'|'activity'|'audit'|'account';
+type View = WorkspaceView;
 type ControlStatus = 'idle'|'loading'|'ready'|'unavailable';
 const nav: { id: View; label: string; icon: string }[] = [
   { id: 'overview', label: 'Overview', icon: 'grid' },
@@ -20,9 +23,11 @@ const nav: { id: View; label: string; icon: string }[] = [
   { id: 'keys', label: 'API keys', icon: 'key' },
   { id: 'approvals', label: 'Approvals', icon: 'inbox' },
   { id: 'activity', label: 'Live Activity', icon: 'activity' },
+  { id: 'verification', label: 'Verification', icon: 'shield' },
   { id: 'audit', label: 'Audit history', icon: 'book' },
   { id: 'account', label: 'Account', icon: 'wallet' },
 ];
+const readRoute=()=>{const [page,id]=window.location.hash.slice(1).split('/');return {view:(nav.some(x=>x.id===page)?page:'overview') as View,id:id&&/^[0-9a-f-]{36}$/i.test(id)?id:undefined};};
 const json = (value: unknown) => JSON.stringify(value, (_key, field) =>
   typeof field === 'bigint' ? field.toString() : field);
 async function requestControl<T = Item>(path: string, body?: unknown, method?: string, scope?: {signal:AbortSignal;did?:string}): Promise<T> {
@@ -90,7 +95,7 @@ export function ControlConsole() {
   const { wallets } = useWallets();
   const { connectWallet } = useConnectWallet();
   const { linkWithPasskey } = useLinkWithPasskey();
-  const [view, setView] = useState<View>('overview');
+  const [view, setView] = useState<View>(()=>readRoute().view);
   const [menuOpen, setMenuOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
     try { return window.localStorage.getItem('pact:sidebar-collapsed') === 'true'; }
@@ -114,7 +119,12 @@ export function ControlConsole() {
   const [activityCursor, setActivityCursor] = useState<string | null>(null);
   const [activityError, setActivityError] = useState('');
   const [activityFilters, setActivityFilters] = useState({ search: '', decision: '', agentId: '' });
-  const [selected,setSelected]=useState<{id:string}>();
+  const [selected,setSelected]=useState<{id:string}|undefined>(()=>readRoute().id?{id:readRoute().id!}:undefined);
+  const [detailEditing,setDetailEditing]=useState(false);
+  const [dashboard,setDashboard]=useState<DashboardData>();
+  const [dashboardError,setDashboardError]=useState('');
+  const [agentActivity,setAgentActivity]=useState<Activity[]>([]);
+  const [detailKey,setDetailKey]=useState<IntegrationKey>();
   const [activityDetail,setActivityDetail]=useState<Activity>();
   const [notice, setNotice] = useState('');
   const [busy, setBusy] = useState(false);
@@ -168,6 +178,7 @@ export function ControlConsole() {
       load('Policies',async()=>setPolicies((await api<{policies:Policy[]}>('/v2/policies')).policies)),
       load('Approvals',async()=>setApprovals((await api<{approvals:Approval[]}>('/v2/approvals')).approvals)),
       load('Activity',async()=>{if(view==='activity')await refreshActivity(false,true);}),
+      load('Dashboard',async()=>{setDashboard(await api<DashboardData>('/v2/dashboard'));setDashboardError('');}),
       load('Keys',async()=>setActiveKeyCount((await api<{active:number}>('/v2/keys/summary')).active)),
     ]);
     if(failures.length) setNotice(`Temporarily unavailable: ${failures.join(', ')}. Other sections remain available; use Retry to reload.`);
@@ -257,7 +268,7 @@ export function ControlConsole() {
     return ()=>{active=false;clearTimeout(timer);activityGeneration.current++;};
   }, [authenticated, controlStatus, view, activityFilters]);
   useEffect(()=>{
-    if(!authenticated || controlStatus!=='ready' || view!=='approvals') return;
+    if(!authenticated || controlStatus!=='ready' || !['approvals','overview'].includes(view)) return;
     let active=true;let timer:ReturnType<typeof setTimeout>;
     const poll=async()=>{try{const data=await api<{approvals:Approval[]}>('/v2/approvals');if(active)setApprovals(data.approvals);}
       catch{if(active)setNotice('Approval inbox is temporarily stale. Retry to refresh.');}
@@ -269,7 +280,44 @@ export function ControlConsole() {
     catch { /* Navigation still works when storage is unavailable. */ }
   }, [sidebarCollapsed]);
 
-  const choose = (next: View) => { setView(next); setSelected(undefined); setMenuOpen(false); };
+  useEffect(()=>{
+    const handler=()=>{const route=readRoute();setView(route.view);setSelected(route.id?{id:route.id}:undefined);setDetailEditing(false);};
+    window.addEventListener('hashchange',handler);return()=>window.removeEventListener('hashchange',handler);
+  },[]);
+  useEffect(()=>{
+    const hash=`#${view}${selected?`/${selected.id}`:''}`;
+    if(window.location.hash!==hash) window.history.pushState(null,'',hash);
+  },[view,selected?.id]);
+  useEffect(()=>{
+    const handler=()=>{const route=readRoute();setView(route.view);setSelected(route.id?{id:route.id}:undefined);setDetailEditing(false);};
+    window.addEventListener('popstate',handler);return()=>window.removeEventListener('popstate',handler);
+  },[]);
+  useEffect(()=>{setDetailEditing(false);},[view,selected?.id]);
+  useEffect(()=>{
+    if(!authenticated||controlStatus!=='ready'||!['overview','agents'].includes(view))return;
+    let active=true;let timer:ReturnType<typeof setTimeout>;
+    const poll=async()=>{try{const result=await api<DashboardData>('/v2/dashboard');if(active){setDashboard(result);setDashboardError('');}}
+      catch{if(active)setDashboardError('Metrics unavailable. Last snapshot retained.');}
+      if(active)timer=setTimeout(()=>void poll(),10000);};
+    void poll();return()=>{active=false;clearTimeout(timer);};
+  },[authenticated,controlStatus,view]);
+  useEffect(()=>{
+    if(!selected||controlStatus!=='ready')return;
+    let active=true;
+    if(view==='agents') {
+      setAgentActivity([]);
+      void refreshKeys(selected.id).catch(()=>{if(active)setNotice('Agent keys unavailable.');});
+      void api<{events:Activity[]}>(`/v2/activity?agentId=${selected.id}`).then(data=>{if(active)setAgentActivity(data.events);}).catch(()=>{if(active)setNotice('Agent activity unavailable.');});
+    }
+    if(view==='keys') {
+      setDetailKey(undefined);
+      void api<IntegrationKey&{agent_id:string}>(`/v2/keys/${selected.id}`).then(data=>{if(active){setDetailKey(data);setKeyForm(current=>({...current,agentId:data.agent_id}));void refreshKeys(data.agent_id).catch(()=>{});}}).catch(()=>{if(active)setNotice('Key details unavailable.');});
+    }
+    if(view==='activity') {setActivityDetail(undefined);void api<Activity>(`/v2/activity/${selected.id}`).then(data=>{if(active)setActivityDetail(data);}).catch(()=>{if(active)setNotice('Request unavailable.');});}
+    return()=>{active=false;};
+  },[view,selected?.id,controlStatus]);
+  const choose = (next: View, id?:string) => { setView(next); setSelected(id?{id}:undefined);setDetailEditing(false);setMenuOpen(false);setNotice('');window.scrollTo({top:0}); };
+  const showDetail=Boolean(selected&&!detailEditing&&['agents','grants','policies','endpoints','keys','approvals','activity'].includes(view));
   const withReview = (title: string, summary: string[], action: () => Promise<void>) =>
     setReview({ title, summary, action });
   const confirm = () => {
@@ -313,65 +361,51 @@ export function ControlConsole() {
       <span>PACT <b>/</b> {nav.find(item => item.id === view)?.label}</span><div className="cpTopActions"><span className="cpLive"><i/> CONTROL PLANE</span>
       {authenticated ? <button onClick={() => void logout()}>Sign out</button> : <button className="cpPrimary" onClick={() => login()}>Sign in</button>}</div></header>
       <main className="cpContent"><div className="cpPageHead"><div><span className="cpEyebrow">PACT / {view.toUpperCase()}</span>
-        <h1>{view === 'overview' ? 'Connect an agent. Keep control.' : nav.find(item => item.id === view)?.label}</h1>
-        <p>{view === 'overview' ? 'Register a service, set the boundary, and see every decision as it happens.' :
-          view === 'account' ? 'Your verified identity owns future grants. Earlier grants keep their original principal.' :
-          view === 'activity' ? 'Every proxy decision, updated automatically. Private gateway logs are not onchain receipts.' :
-          'Each change is checked by Pact before it affects an agent.'}</p></div>
+        <h1>{view === 'overview' ? 'Overview' : nav.find(item => item.id === view)?.label}</h1>
+        <p>{view === 'overview' ? 'Your agents, authority and activity.' :
+          view === 'account' ? 'Identity, signing and recovery.' :
+          view === 'activity' ? 'Live decisions · private gateway records.' :
+          ''}</p></div>
         {authenticated && account?.principalAddress && <div className="cpPrincipalBadge"><small>YOUR PRINCIPAL ADDRESS</small><code title={account.principalAddress}>{short(account.principalAddress)}</code><span>{account.verificationStatus}</span></div>}</div>
       {notice && <div className="cpNotice" role="status">{notice}<button disabled={busy} onClick={()=>void run(refresh)}>Retry loading</button><button onClick={() => setNotice('')} aria-label="Dismiss">×</button></div>}
       {!ready && <p className="cpLoading">Loading account…</p>}
       {ready && !authenticated && <section className="cpHeroPanel"><span className="cpEyebrow">YOUR AGENT WORKSPACE</span><h2>Start with your account.</h2>
-        <p>Sign in with email, passkey, or another available method. Pact creates a unique account address for you automatically. No external wallet is needed to connect an HTTP agent.</p>
+        <p>Email, passkey or wallet. HTTP agents need no wallet.</p>
         <button className="cpPrimary" onClick={() => login()}>Create account or sign in <Icon name="arrow" size={16}/></button></section>}
-      {authenticated && controlStatus === 'loading' && <section className="cpHeroPanel" role="status"><span className="cpEyebrow">CONNECTING</span><h2>Loading your workspace.</h2><p>Checking your account and agent management API.</p></section>}
+      {authenticated && controlStatus === 'loading' && <section className="cpHeroPanel" role="status"><span className="cpEyebrow">CONNECTING</span><h2>Loading your workspace.</h2><p>Connecting to Pact.</p></section>}
       {authenticated && controlStatus === 'unavailable' && <section className="cpHeroPanel" role="alert"><span className="cpEyebrow">SERVICE UNAVAILABLE</span><h2>{nav.find(item => item.id === view)?.label} cannot load yet.</h2>
-        <p>{controlError} Your account verification has not failed; the Console cannot check it until the API responds.</p>
+        <p>{controlError} Retry when the API is available.</p>
         <button className="cpPrimary" onClick={() => setConnectionAttempt(value => value + 1)}>Retry connection</button>
         <p><a href="/legacy">Open existing Monad grants ↗</a></p></section>}
       {authenticated && controlStatus === 'ready' && account?.verificationStatus === 'unverified' && <section className="cpCard" role="status"><span className="cpEyebrow">ACCOUNT SETUP</span><h2>Your account address is being assigned.</h2><p>Agent and HTTP grant management will be available when this finishes.</p><button onClick={() => setConnectionAttempt(value => value + 1)}>Retry account setup</button></section>}
       {authenticated && controlStatus === 'ready' && account && <>
-      {view === 'overview' && <><VerificationPanel control={api} onComplete={refresh}/><div className="cpStats">{[
-        ['Agents',agents.length,'agent'],['Endpoints',endpoints.length,'globe'],
-        ['Active keys',activeKeyCount,'key'],
-        ['Events',activity.length,'activity'],
-      ].map(([label,value,icon]) => <div key={String(label)}><Icon name={String(icon)} size={20}/><span>{label}</span><strong>{value}</strong></div>)}</div>
-      <div className="cpTwo"><section className="cpCard"><div className="cpCardHead"><span className="cpEyebrow">QUICKSTART</span><h2>Connect an agent</h2><p>Finish these steps in order. Each step writes a real record and appears in the pages at left.</p></div>
-        {[
-          ['1','Register an agent','Give it a name and environment.','agents',agents.length],
-          ['2','Add a service and secret','Choose an upstream; Pact stores the credential encrypted.','endpoints',services.length],
-          ['3','Create a grant and policy','Bound actions, destinations, rates, and approvals.','grants',grants.length && policies.length],
-          ['4','Register an operation','Map a method and route to a grant and policy.','endpoints',endpoints.length],
-          ['5','Issue a scoped API key','Copy the secret once and give it to your agent.','keys',activeKeyCount],
-          ['6','Test and inspect','Make an allowed GET and a denied request.','activity',activity.length],
-        ].map(([number,title,detail,target,done]) => <button className="cpStep" key={String(number)} onClick={() => choose(target as View)}><span className={done ? 'done' : ''}>{done ? '✓' : number}</span><div><strong>{title}</strong><small>{detail}</small></div><Icon name="arrow" size={16}/></button>)}</section>
-        <section className="cpCard cpFlow"><span className="cpEyebrow">THE ENFORCEMENT PATH</span><h2>Permission travels through Pact.</h2><div className="cpFlowDiagram"><span>Agent</span><i>→</i><span>Scoped key</span><i>→</i><span>Ordered policy</span><i>→</i><span>Upstream</span></div>
-          <p>The upstream secret remains in Pact. A denied request stops before forwarding. Gateway activity is private by default; Monad receipts are separately anchored and verifiable.</p>
-          <code>{proxyUrl}</code><Copy text={proxyUrl} label="Copy proxy URL"/>
-        </section></div></>}
+      {view === 'overview' && <Dashboard agents={agents} grants={grants} policies={policies} endpoints={endpoints} approvals={approvals} data={dashboard} error={dashboardError} navigate={choose} retry={()=>void run(refresh)}/>}
+      {view === 'verification' && <VerificationPanel control={api} onComplete={refresh}/>}
+      {showDetail && selected && <ResourceDetail view={view} id={selected.id} agents={agents} grants={grants} policies={policies} services={services} endpoints={endpoints} keys={view==='keys'&&detailKey?[detailKey]:keys} approvals={approvals} agentActivity={agentActivity} activity={activityDetail?.id===selected.id?activityDetail:undefined} data={dashboard} navigate={choose} manage={()=>{setDetailEditing(true);if(view==='endpoints'&&endpointDetail)setResponseFieldsDraft(endpointDetail.response_fields.join(', '));if(view==='agents'&&agentDetail){setEditAgentId(agentDetail.id);setAgentForm({name:agentDetail.name,environment:agentDetail.environment,description:agentDetail.description});}}}/>}
+      {!showDetail && <>
 
-      {view === 'agents' && <div className="cpTwo"><section className="cpCard"><span className="cpEyebrow">01 / IDENTITY</span><h2>{editAgentId?'Edit agent':'Register an agent'}</h2><p>An agent is your application or runtime. It receives no authority until you create a grant and policy.</p>
+      {view === 'agents' && <div className="cpTwo"><section className="cpCard"><span className="cpEyebrow">01 / IDENTITY</span><h2>{editAgentId?'Edit agent':'Register an agent'}</h2><p>Register a runtime. Add authority with a grant.</p>
         <Field label="Agent name" hint="Example: Support assistant"><input value={agentForm.name} onChange={e => setAgentForm({ ...agentForm, name: e.target.value })} placeholder="Support assistant"/></Field>
         <Field label="Environment"><select value={agentForm.environment} onChange={e => setAgentForm({ ...agentForm, environment: e.target.value })}><option value="development">Development</option><option value="staging">Staging</option><option value="production">Production</option></select></Field>
         <Field label="Description"><textarea value={agentForm.description} onChange={e => setAgentForm({ ...agentForm, description: e.target.value })} placeholder="What this agent does"/></Field>
         <button className="cpPrimary" disabled={busy || agentForm.name.trim().length < 2} onClick={() => withReview(editAgentId?'Edit agent':'Register agent', [agentForm.name, `Environment: ${agentForm.environment}`, agentForm.description || 'No description'], async () => {
           await api(editAgentId?`/v2/agents/${editAgentId}`:'/v2/agents',agentForm,editAgentId?'PATCH':'POST');setEditAgentId(''); setAgentForm({ ...agentForm, name: '', description: '' });
-          await refresh(); setNotice('Agent saved. Add or update its upstream services next.');
+          await refresh(); setNotice('Agent saved.');
         })}>Review agent <Icon name="arrow" size={15}/></button>{editAgentId && <button onClick={()=>setEditAgentId('')}>Cancel edit</button>}</section>
         <section className="cpCard"><div className="cpCardHead"><span className="cpEyebrow">DIRECTORY</span><h2>Your agents</h2></div>{agents.length ? agents.map(item =>
-          <div className="cpListRow" key={item.id}><span className="cpAvatar"><Icon name="agent" size={18}/></span><div><strong>{item.name}</strong><small>{item.environment} · {item.status}</small></div><button onClick={() => setSelected(item)}>View</button></div>) : <Empty title="No agents yet" detail="Register one here to begin connecting an upstream service."/>}
+          <div className="cpListRow" key={item.id}><span className="cpAvatar"><Icon name="agent" size={18}/></span><div><strong>{item.name}</strong><small>{item.environment} · {item.status}</small></div><button onClick={() => setSelected(item)}>View</button></div>) : <Empty title="No agents yet" detail="Register your first agent."/>}
           {agentDetail && <div className="cpDetail"><h3>{agentDetail.name}</h3><p>{agentDetail.description || 'No description'}</p><code>{agentDetail.id}</code><button onClick={()=>{setEditAgentId(agentDetail.id);setAgentForm({name:agentDetail.name,environment:agentDetail.environment,description:agentDetail.description});}}>Edit details</button><div className="cpActions"><button onClick={() => void run(async () => { await api(`/v2/agents/${agentDetail.id}`, { status: agentDetail.status === 'active' ? 'disabled' : 'active' }, 'PATCH'); await refresh(); setSelected(undefined); })}>{agentDetail.status === 'active' ? 'Disable agent' : 'Enable agent'}</button></div></div>}</section></div>}
 
-      {view === 'grants' && <div className="cpTwo"><section className="cpCard"><span className="cpEyebrow">02 / OWNER AUTHORITY</span><h2>{editGrantId?'Narrow an HTTP grant':'Create an HTTP grant'}</h2><p>This grant authorizes an agent to use registered HTTP operations only. Onchain spending requires a separate Monad transaction.</p>
+      {view === 'grants' && <div className="cpTwo"><section className="cpCard"><span className="cpEyebrow">02 / OWNER AUTHORITY</span><h2>{editGrantId?'Narrow an HTTP grant':'Create an HTTP grant'}</h2><p>HTTP authority. Onchain spending requires separate authorization.</p>
         <Field label="Agent"><select disabled={!!editGrantId} value={grantForm.agentId} onChange={e => setGrantForm({ ...grantForm, agentId: e.target.value })}><option value="">Select agent</option>{agents.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select></Field>
         <Field label="Grant name"><input disabled={!!editGrantId} value={grantForm.name} onChange={e => setGrantForm({ ...grantForm, name: e.target.value })}/></Field>
-        <Field label="Permitted service origin" hint="Example: https://api.example.com; exact destination allowlist"><select value={grantForm.origin} onChange={e => setGrantForm({ ...grantForm, origin: e.target.value })}><option value="">Select registered service</option>{services.filter(item => item.agent_id === grantForm.agentId).map(item => <option key={item.id} value={item.base_url}>{item.name} · {item.base_url}</option>)}</select></Field>
-        <Field label="Allowed recipients" hint="Comma separated exact identifiers. Required for operations that move value; leave empty for fixed-cost non-payment calls."><input value={grantForm.recipients} onChange={e=>setGrantForm({...grantForm,recipients:e.target.value})}/></Field>
+        <Field label="Permitted service origin" hint="Exact HTTPS origin"><select value={grantForm.origin} onChange={e => setGrantForm({ ...grantForm, origin: e.target.value })}><option value="">Select registered service</option>{services.filter(item => item.agent_id === grantForm.agentId).map(item => <option key={item.id} value={item.base_url}>{item.name} · {item.base_url}</option>)}</select></Field>
+        <Field label="Allowed recipients" hint="Exact IDs, comma separated. Required for payments."><input value={grantForm.recipients} onChange={e=>setGrantForm({...grantForm,recipients:e.target.value})}/></Field>
         <Field label="Allowed HTTP actions"><div className="cpChecks">{['GET','POST','PUT','PATCH','DELETE'].map(method => <label key={method}><input type="checkbox" checked={grantForm.actions.includes(method)} onChange={e => setGrantForm({ ...grantForm, actions: e.target.checked ? [...grantForm.actions,method] : grantForm.actions.filter(value => value !== method) })}/>{method}</label>)}</div></Field>
         <div className="cpGrid3"><Field label="Currency"><input value={grantForm.currency} maxLength={12} onChange={e => setGrantForm({ ...grantForm, currency: e.target.value.toUpperCase() })}/></Field>
           <Field label="Per action limit" hint="Minor units; 0 = free calls only"><input inputMode="numeric" value={grantForm.perActionLimitMinor} onChange={e => setGrantForm({ ...grantForm, perActionLimitMinor: e.target.value })}/></Field>
           <Field label="Aggregate limit" hint="Minor units"><input inputMode="numeric" value={grantForm.aggregateLimitMinor} onChange={e => setGrantForm({ ...grantForm, aggregateLimitMinor: e.target.value })}/></Field></div>
-        <Field label="Approval above" hint="Minor units; paid calls above this need human approval"><input inputMode="numeric" value={grantForm.approvalThresholdMinor} onChange={e => setGrantForm({ ...grantForm, approvalThresholdMinor: e.target.value })}/></Field>
+        <Field label="Approval above" hint="Minor units; larger amounts require approval"><input inputMode="numeric" value={grantForm.approvalThresholdMinor} onChange={e => setGrantForm({ ...grantForm, approvalThresholdMinor: e.target.value })}/></Field>
         <div className="cpGrid2"><Field label="Starts at"><input disabled={!!editGrantId} type="datetime-local" value={localDateTime(grantForm.startsAt)} onChange={e => { if(e.target.value) setGrantForm({ ...grantForm, startsAt: new Date(e.target.value).toISOString() }); }}/></Field>
           <Field label="Expires at"><input type="datetime-local" value={localDateTime(grantForm.expiresAt)} onChange={e => { if(e.target.value) setGrantForm({ ...grantForm, expiresAt: new Date(e.target.value).toISOString() }); }}/></Field></div>
         <button className="cpPrimary" disabled={busy || (!editGrantId && !account.principalAddress) || !grantForm.agentId || !grantForm.origin || !grantForm.actions.length} onClick={() => withReview(editGrantId?'Narrow HTTP grant':'Create HTTP grant', [
@@ -395,10 +429,10 @@ export function ControlConsole() {
           aggregateLimitMinor: grantForm.aggregateLimitMinor,
           approvalThresholdMinor: grantForm.approvalThresholdMinor,
           startsAt: grantForm.startsAt, expiresAt: grantForm.expiresAt });
-          setEditGrantId('');await refresh(); setNotice('HTTP grant saved under your principal address.');
+          setEditGrantId('');await refresh(); setNotice('Grant saved.');
         })}>Review grant <Icon name="arrow" size={15}/></button>{editGrantId && <button onClick={()=>setEditGrantId('')}>Cancel edit</button>}</section>
         <section className="cpCard"><span className="cpEyebrow">ISSUED AUTHORITY</span><h2>Grants</h2>{grants.length ? grants.map(item =>
-          <div className="cpListRow" key={item.id}><span className="cpAvatar"><Icon name="shield" size={18}/></span><div><strong>{item.name}</strong><small>{item.actions?.join(', ')} · {item.status}</small></div><button onClick={() => setSelected(item)}>Inspect</button></div>) : <Empty title="No HTTP grants" detail="Choose an agent and a registered service to define its boundary."/>}
+          <div className="cpListRow" key={item.id}><span className="cpAvatar"><Icon name="shield" size={18}/></span><div><strong>{item.name}</strong><small>{item.actions?.join(', ')} · {item.status}</small></div><button onClick={() => setSelected(item)}>Inspect</button></div>) : <Empty title="No HTTP grants" detail="Create a grant for a registered service."/>}
           {grantDetail && <div className="cpDetail"><h3>{grantDetail.name}</h3><p>Owner: <code>{grantDetail.principal_address}</code></p><p>Actions: {grantDetail.actions?.join(', ')}</p><p>Destination: {grantDetail.destination_origins?.join(', ')}</p><p>Limit: {moneyLabel(grantDetail.per_action_limit_minor, grantDetail.currency)} per action; {moneyLabel(grantDetail.aggregate_limit_minor, grantDetail.currency)} aggregate.</p><p>Spent: {grantDetail.spent_minor ?? '0'} minor units</p><p>Expires: {new Date(grantDetail.expires_at).toLocaleString()}</p><p>Status: {grantDetail.status}</p>
           {grantDetail.status === 'active' && <button onClick={()=>{setEditGrantId(grantDetail.id);setGrantForm({agentId:grantDetail.agent_id,name:grantDetail.name,
             origin:grantDetail.resource_origins[0],recipients:(grantDetail.allowed_recipients??[]).join(', '),actions:grantDetail.actions,currency:grantDetail.currency,
@@ -414,7 +448,7 @@ export function ControlConsole() {
             await api(`/v2/grants/${grantDetail.id}`, { status: 'revoked' }, 'PATCH'); await refresh(); setSelected(undefined);
           })}>Revoke grant</button>}</div>}</section></div>}
 
-      {view === 'policies' && <div className="cpTwo"><section className="cpCard"><span className="cpEyebrow">03 / ORDERED DECISIONS</span><h2>{editPolicyId?'Edit ordered policy':'Create a policy'}</h2><p>Rules run top to bottom. The first matching rule decides. No match means deny.</p>
+      {view === 'policies' && <div className="cpTwo"><section className="cpCard"><span className="cpEyebrow">03 / ORDERED DECISIONS</span><h2>{editPolicyId?'Edit ordered policy':'Create a policy'}</h2><p>First match wins. No match denies.</p>
         <Field label="Agent"><select disabled={!!editPolicyId} value={policyForm.agentId} onChange={e => setPolicyForm({ ...policyForm, agentId: e.target.value })}><option value="">Select agent</option>{agents.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select></Field>
         <Field label="Policy name"><input value={policyForm.name} onChange={e => setPolicyForm({ ...policyForm, name: e.target.value })}/></Field>
         {policyForm.rules.map((rule, index) => <div className="cpRule" key={`${rule.id}-${index}`}><div className="cpRuleHead"><strong>Rule {index+1}</strong><div><button onClick={() => { const next = [...policyForm.rules]; if (index > 0) { [next[index-1],next[index]] = [next[index]!,next[index-1]!]; setPolicyForm({ ...policyForm, rules: next }); } }} disabled={index===0}>↑</button><button onClick={() => { const next = [...policyForm.rules]; if (index < next.length-1) { [next[index],next[index+1]] = [next[index+1]!,next[index]!]; setPolicyForm({ ...policyForm, rules: next }); } }} disabled={index===policyForm.rules.length-1}>↓</button><button onClick={() => setPolicyForm({ ...policyForm, rules: policyForm.rules.filter((_,i) => i!==index) })} disabled={policyForm.rules.length===1}>Remove</button></div></div>
@@ -449,13 +483,13 @@ export function ControlConsole() {
           maxSpendMinor:rule.maxSpendMinor??'',currency:rule.currency??'USD',
           startHour:rule.windowUtc?.startHour?.toString()??'',endHour:rule.windowUtc?.endHour?.toString()??''}))});}}>Edit rules</button><button className="cpDanger" onClick={()=>withReview('Disable policy',[`All linked endpoints will deny requests.`,policyDetail.name],async()=>{await api(`/v2/policies/${policyDetail.id}`,{status:'disabled'},'PATCH');await refresh();setSelected(undefined);})} disabled={policyDetail.status==='disabled'}>Disable policy</button></div>}</section></div>}
 
-      {view === 'endpoints' && <><div className="cpTwo"><section className="cpCard"><span className="cpEyebrow">02 / UPSTREAM</span><h2>Register a service</h2><p>Give Pact the upstream origin. The agent only receives Pact’s proxy URL.</p>
+      {view === 'endpoints' && <><div className="cpTwo"><section className="cpCard"><span className="cpEyebrow">02 / UPSTREAM</span><h2>Register a service</h2><p>Register the upstream. Agents call Pact.</p>
         <Field label="Agent"><select value={serviceForm.agentId} onChange={e=>setServiceForm({...serviceForm,agentId:e.target.value})}><option value="">Select agent</option>{agents.map(item=><option key={item.id} value={item.id}>{item.name}</option>)}</select></Field>
         <Field label="Service name"><input value={serviceForm.name} onChange={e=>setServiceForm({...serviceForm,name:e.target.value})} placeholder="Orders API"/></Field>
-        <Field label="Base URL" hint="HTTPS origin, for example https://api.example.com. Local HTTP is allowed only in the demo environment."><input value={serviceForm.baseUrl} onChange={e=>setServiceForm({...serviceForm,baseUrl:e.target.value})} placeholder="https://api.example.com"/></Field>
+        <Field label="Base URL" hint="HTTPS origin, e.g. https://api.example.com"><input value={serviceForm.baseUrl} onChange={e=>setServiceForm({...serviceForm,baseUrl:e.target.value})} placeholder="https://api.example.com"/></Field>
         <Field label="Upstream authentication"><select value={serviceForm.authMethod} onChange={e=>setServiceForm({...serviceForm,authMethod:e.target.value})}><option value="none">No credential</option><option value="bearer">Bearer token</option><option value="header">Custom header</option></select></Field>
         {serviceForm.authMethod==='header' && <Field label="Header name"><input value={serviceForm.authHeader} onChange={e=>setServiceForm({...serviceForm,authHeader:e.target.value})} placeholder="X-API-Key"/></Field>}
-        {serviceForm.authMethod!=='none' && <Field label="Upstream secret" hint="Encrypted at rest. Never shown again or given to your agent."><input type="password" autoComplete="off" value={serviceForm.secret} onChange={e=>setServiceForm({...serviceForm,secret:e.target.value})}/></Field>}
+        {serviceForm.authMethod!=='none' && <Field label="Upstream secret" hint="Encrypted. Hidden from agents."><input type="password" autoComplete="off" value={serviceForm.secret} onChange={e=>setServiceForm({...serviceForm,secret:e.target.value})}/></Field>}
         <button className="cpPrimary" disabled={busy || !serviceForm.agentId || !serviceForm.baseUrl || !serviceForm.name} onClick={()=>withReview('Register service',[
           `Agent: ${agents.find(item=>item.id===serviceForm.agentId)?.name}`,`Upstream: ${serviceForm.baseUrl}`,
           `Credential: ${serviceForm.authMethod==='none'?'none':`${serviceForm.authMethod} (stored encrypted)`}`],async()=>{
@@ -463,31 +497,31 @@ export function ControlConsole() {
             authMethod:serviceForm.authMethod,...(serviceForm.authMethod==='header'?{authHeader:serviceForm.authHeader}:{})});
           try {if(serviceForm.authMethod!=='none') await api(`/v2/services/${created.id}/secret`,{secret:serviceForm.secret},'PUT');}
           catch {setServiceForm({...serviceForm,name:'',baseUrl:'',secret:''});await refresh();setSelected(created);throw Error('Service registered; credential setup failed. Select the service below and save a replacement credential.');}
-          setServiceForm({...serviceForm,name:'',baseUrl:'',secret:''});await refresh();setNotice('Service connected. Create a grant and policy before registering an operation.');
+          setServiceForm({...serviceForm,name:'',baseUrl:'',secret:''});await refresh();setNotice('Service connected.');
         })}>Review service <Icon name="arrow" size={15}/></button></section>
         <section className="cpCard"><span className="cpEyebrow">UPSTREAM SERVICES</span><h2>Manage services</h2>
-          {services.length ? services.map(item => <div className="cpListRow" key={item.id}><span className="cpAvatar"><Icon name="globe" size={18}/></span><div><strong>{item.name}</strong><small>{item.base_url} · {item.auth_method} · {item.status} · credential {item.has_secret ? 'stored' : 'missing'}</small></div><button onClick={()=>{setSelected(item);setReplacementSecret('');}}>Manage</button></div>) : <Empty title="No services" detail="Register an upstream service to manage its operations and credential."/>}
+          {services.length ? services.map(item => <div className="cpListRow" key={item.id}><span className="cpAvatar"><Icon name="globe" size={18}/></span><div><strong>{item.name}</strong><small>{item.base_url} · {item.auth_method} · {item.status} · credential {item.has_secret ? 'stored' : 'missing'}</small></div><button onClick={()=>{setSelected(item);setReplacementSecret('');}}>Manage</button></div>) : <Empty title="No services" detail="Add an upstream service."/>}
           {serviceDetail && <div className="cpDetail"><h3>{serviceDetail.name}</h3><p>Agent: {agents.find(item=>item.id===serviceDetail.agent_id)?.name ?? serviceDetail.agent_id}</p><p>Base URL: <code>{serviceDetail.base_url}</code></p><p>Authentication: {serviceDetail.auth_method}{serviceDetail.auth_header ? ` · ${serviceDetail.auth_header}` : ''}</p><p>Status: {serviceDetail.status}</p>
             <button onClick={()=>withReview(serviceDetail.status==='active'?'Disable service':'Enable service',[serviceDetail.name,serviceDetail.base_url],async()=>{await api(`/v2/services/${serviceDetail.id}`,{status:serviceDetail.status==='active'?'disabled':'active'},'PATCH');await refresh();setSelected(undefined);})}>{serviceDetail.status==='active'?'Disable service':'Enable service'}</button>
             {serviceDetail.auth_method!=='none' && <><Field label="Replacement upstream secret"><input type="password" autoComplete="off" value={replacementSecret} onChange={e=>setReplacementSecret(e.target.value)}/></Field><button disabled={replacementSecret.length<8} onClick={()=>withReview('Rotate upstream credential',[`Service: ${serviceDetail.name}`,'The prior credential stops being used immediately.'],async()=>{await api(`/v2/services/${serviceDetail.id}/secret`,{secret:replacementSecret},'PUT');setReplacementSecret('');await refresh();setSelected(undefined);})}>Rotate credential</button><button className="cpDanger" onClick={()=>withReview('Revoke upstream credential',[`Service: ${serviceDetail.name}`,'Authenticated calls will fail until a replacement is stored.'],async()=>{await api(`/v2/services/${serviceDetail.id}/secret`,undefined,'DELETE');await refresh();setSelected(undefined);})}>Revoke credential</button></>}
           </div>}</section>
-        <section className="cpCard"><span className="cpEyebrow">04 / OPERATION</span><h2>Register an endpoint</h2><p>Each operation binds one method and route to one grant and one policy.</p>
+        <section className="cpCard"><span className="cpEyebrow">04 / OPERATION</span><h2>Register an endpoint</h2><p>Bind a route to its grant and policy.</p>
           <Field label="Service"><select value={endpointForm.serviceId} onChange={e=>{setEndpointForm({...endpointForm,serviceId:e.target.value});setOpenApiPreview(undefined);}}><option value="">Select service</option>{activeServices.map(item=><option key={item.id} value={item.id}>{item.name}</option>)}</select></Field>
           <div className="cpGrid2"><Field label="HTTP method"><select value={endpointForm.method} onChange={e=>setEndpointForm({...endpointForm,method:e.target.value})}>{['GET','POST','PUT','PATCH','DELETE'].map(value=><option key={value}>{value}</option>)}</select></Field><Field label="Route pattern"><input value={endpointForm.pathPattern} onChange={e=>setEndpointForm({...endpointForm,pathPattern:e.target.value})} placeholder="/health"/></Field></div>
           <Field label="Description"><input value={endpointForm.description} onChange={e=>setEndpointForm({...endpointForm,description:e.target.value})} placeholder="Read health status"/></Field>
           <div className="cpGrid2"><Field label="Grant"><select value={endpointForm.grantId} onChange={e=>{setEndpointForm({...endpointForm,grantId:e.target.value});setOpenApiPreview(undefined);}}><option value="">Select grant</option>{grants.filter(item=>item.status==='active').map(item=><option key={item.id} value={item.id}>{item.name}</option>)}</select></Field><Field label="Policy"><select value={endpointForm.policyId} onChange={e=>{setEndpointForm({...endpointForm,policyId:e.target.value});setOpenApiPreview(undefined);}}><option value="">Select policy</option>{policies.filter(item=>item.status==='active').map(item=><option key={item.id} value={item.id}>{item.name}</option>)}</select></Field></div>
           <div className="cpGrid2"><Field label="Fixed cost, minor units" hint="0 for free operations"><input inputMode="numeric" value={endpointForm.costMinor} onChange={e=>setEndpointForm({...endpointForm,costMinor:e.target.value})}/></Field><Field label="Currency"><input value={endpointForm.currency} onChange={e=>{setEndpointForm({...endpointForm,currency:e.target.value.toUpperCase()});setOpenApiPreview(undefined);}}/></Field></div>
-          <fieldset><legend>Request spending constraints</legend><p>For a payment operation, identify the JSON body fields below. Amounts must be strings in minor units; currency must match and the recipient must be allowed by the grant. Fixed cost alone does not limit amounts inside a request.</p>
+          <fieldset><legend>Request spending constraints</legend><p>Map payment fields to enforce amounts and recipients. Use string amounts in minor units.</p>
           <Field label="Amount field path" hint="Example: payment.amountMinor"><input value={endpointForm.amountPath} onChange={e=>setEndpointForm({...endpointForm,amountPath:e.target.value})}/></Field>
           <Field label="Currency field path" hint="Example: payment.currency"><input value={endpointForm.currencyPath} onChange={e=>setEndpointForm({...endpointForm,currencyPath:e.target.value})}/></Field>
           <Field label="Recipient field path" hint="Example: payment.recipient"><input value={endpointForm.recipientPath} onChange={e=>setEndpointForm({...endpointForm,recipientPath:e.target.value})}/></Field></fieldset>
-          <Field label="Returned JSON fields" hint="For protected services, only these top-level fields reach the agent. Example: status, service, ok. Empty means no upstream body."><input value={endpointForm.responseFields.join(', ')} onChange={e=>setEndpointForm({...endpointForm,responseFields:e.target.value.split(',').map(value=>value.trim()).filter(Boolean)})}/></Field>
+          <Field label="Returned JSON fields" hint="Allowed response fields. Empty returns no body."><input value={endpointForm.responseFields.join(', ')} onChange={e=>setEndpointForm({...endpointForm,responseFields:e.target.value.split(',').map(value=>value.trim()).filter(Boolean)})}/></Field>
           <button className="cpPrimary" disabled={busy || !endpointForm.serviceId || !endpointForm.grantId || !endpointForm.policyId} onClick={()=>withReview('Register operation',[
             `${endpointForm.method} ${endpointForm.pathPattern}`,`Service: ${services.find(item=>item.id===endpointForm.serviceId)?.name}`,
             `Grant: ${grants.find(item=>item.id===endpointForm.grantId)?.name}`,`Policy: ${policies.find(item=>item.id===endpointForm.policyId)?.name}`,
             `Cost: ${moneyLabel(endpointForm.costMinor,endpointForm.currency)}`],async()=>{const {amountPath,currencyPath,recipientPath,...operation}=endpointForm;await api('/v2/endpoints',{...operation,...(amountPath||currencyPath||recipientPath ? {economicConstraints:{amountPath,currencyPath,recipientPath}} : {})});await refresh();setNotice('Endpoint registered. Issue a scoped API key to call it.');})}>Review endpoint <Icon name="arrow" size={15}/></button>
         </section></div>
-        <div className="cpTwo"><section className="cpCard"><span className="cpEyebrow">OPENAPI IMPORT</span><h2>Import operations</h2><p>Paste an OpenAPI 3 JSON document. The first server, base path and local references are supported. Configure service authentication explicitly. Remote references, per-operation servers and automatic request-schema enforcement are not supported.</p>
+        <div className="cpTwo"><section className="cpCard"><span className="cpEyebrow">OPENAPI IMPORT</span><h2>Import operations</h2><p>Paste an OpenAPI 3 JSON document.</p><details><summary>Supported imports</summary><p>First server, base path and local references. Set authentication separately. Remote references, per-operation servers and request-schema enforcement are not supported.</p></details>
           <textarea className="cpCodeInput" value={openApi} onChange={e=>{setOpenApi(e.target.value);setOpenApiPreview(undefined);}} placeholder='{"openapi":"3.0.0","info":{"title":"Demo"},"servers":[{"url":"https://api.example.com"}],"paths":{"/health":{"get":{"summary":"Health"}}}}'/>
           <div className="cpActions"><button onClick={()=>void run(async()=>setOpenApiPreview(await api<OpenApiPreview>('/v2/openapi/preview',{spec:JSON.parse(openApi)})))} disabled={!openApi}>Preview import</button>
           <button className="cpPrimary" disabled={!openApiPreview || !endpointForm.serviceId || !endpointForm.grantId || !endpointForm.policyId} onClick={()=>withReview('Import OpenAPI operations',openApiPreview?.operations?.map((item)=>`${item.method} ${item.pathPattern}`)??[],async()=>{
@@ -518,7 +552,7 @@ export function ControlConsole() {
             setNewSecret(result.secret);setTestKey(result.secret);await refreshKeys(keyForm.agentId);await refresh();setNotice('Key issued. Copy it now; Pact will not show it again.');
           })}>Review and issue <Icon name="arrow" size={15}/></button>
         {newSecret && <div className="cpSecret" role="alert"><strong>Copy this key now</strong><code>{newSecret}</code><Copy text={newSecret} label="Copy key"/><button onClick={()=>setNewSecret('')}>I saved it</button></div>}
-        <div className="cpDivider"/><h3>Keys for {selectedAgent?.name??'selected agent'}</h3>{keys.length ? keys.map(item=><div className="cpListRow" key={item.id}><span className="cpAvatar"><Icon name="key" size={18}/></span><div><strong>{item.name}</strong><small>{item.prefix}… · {item.scopes?.join(', ')} · {item.revoked_at?'revoked':new Date(item.expires_at)<new Date()?'expired':'active'}</small><small>Last used: {item.last_used_at?new Date(item.last_used_at).toLocaleString():'never'}</small></div>{!item.revoked_at && <div className="cpKeyActions"><button onClick={()=>withReview('Rotate key',[`Old key ${item.prefix}… stops working immediately.`,`New key keeps scopes ${item.scopes.join(', ')} and expiry.`],async()=>{const result=await api<{secret:string}>(`/v2/agents/${keyForm.agentId}/keys/${item.id}/rotate`,{});setNewSecret(result.secret);setTestKey(result.secret);await refreshKeys(keyForm.agentId);await refresh();})}>Rotate</button><button className="cpDanger" onClick={()=>withReview('Revoke key',[`Key ${item.prefix}… will stop working immediately.`],async()=>{await api(`/v2/agents/${keyForm.agentId}/keys/${item.id}`,undefined,'DELETE');await refreshKeys(keyForm.agentId);await refresh();})}>Revoke</button></div>}</div>) : <Empty title="No keys for this agent" detail="Issue one after registering an endpoint."/>}</section>
+        <div className="cpDivider"/><h3>Keys for {selectedAgent?.name??'selected agent'}</h3>{keys.length ? keys.map(item=><div className="cpListRow" key={item.id}><span className="cpAvatar"><Icon name="key" size={18}/></span><div><strong>{item.name}</strong><small>{item.prefix}… · {item.scopes?.join(', ')} · {item.revoked_at?'revoked':new Date(item.expires_at)<new Date()?'expired':'active'}</small><small>Last used: {item.last_used_at?new Date(item.last_used_at).toLocaleString():'never'}</small></div><button onClick={()=>choose('keys',item.id)}>View more</button>{!item.revoked_at && <div className="cpKeyActions"><button onClick={()=>withReview('Rotate key',[`Old key ${item.prefix}… stops working immediately.`,`New key keeps scopes ${item.scopes.join(', ')} and expiry.`],async()=>{const result=await api<{secret:string}>(`/v2/agents/${keyForm.agentId}/keys/${item.id}/rotate`,{});setNewSecret(result.secret);setTestKey(result.secret);await refreshKeys(keyForm.agentId);await refresh();})}>Rotate</button><button className="cpDanger" onClick={()=>withReview('Revoke key',[`Key ${item.prefix}… will stop working immediately.`],async()=>{await api(`/v2/agents/${keyForm.agentId}/keys/${item.id}`,undefined,'DELETE');await refreshKeys(keyForm.agentId);await refresh();})}>Revoke</button></div>}</div>) : <Empty title="No keys for this agent" detail="Issue one after registering an endpoint."/>}</section>
         <section className="cpCard"><span className="cpEyebrow">INTEGRATE</span><h2>Call Pact from your agent</h2><p>Use the gateway URL with the scoped key. Keep the key in a server-side secret store. It is never an onchain signer.</p>
           <Field label="Proxy URL"><code className="cpCode">{proxyUrl}</code><Copy text={proxyUrl}/></Field>
           <h3>TypeScript</h3><pre>{`import { PactHttpClient } from '@pact/sdk-ts';\nconst pact = new PactHttpClient('${gatewayBase}', process.env.PACT_AGENT_KEY!);\nconst result = await pact.proxy('${exampleAgent?.id??'AGENT_ID'}','${exampleService?.id??'SERVICE_ID'}','GET','${exampleEndpoint?.path_pattern??"/health"}');`}</pre>
@@ -527,21 +561,21 @@ export function ControlConsole() {
           <h3>MCP</h3><pre>{`PACT_GATEWAY_URL=${gatewayBase} PACT_AGENT_KEY=pat_… pnpm --filter @pact/mcp start`}</pre>
           <p className="cpHint">Set <code>PACT_API_URL={apiBase}</code> for authority reads. The key only allows its listed proxy scopes.</p></section></div>}
 
-      {view === 'approvals' && <section className="cpCard"><span className="cpEyebrow">HUMAN DECISION</span><h2>Approval inbox</h2><p>Approval binds one exact request hash, endpoint, agent, and 15-minute window. The agent must retry with the approval ID; approval alone never forwards a call.</p>
-        {approvalIntent && <div className="cpDetail"><h3>Request details</h3><p>Owner-only disclosure. Sensitive fields are redacted.</p><pre>{JSON.stringify(approvalIntent.intent,null,2)}</pre></div>}{approvals.length ? approvals.map(item=><div className="cpListRow" key={item.id}><span className="cpAvatar"><Icon name="inbox" size={18}/></span><div><strong>{item.agent_name} · {item.method} {item.path_pattern}</strong><small>{item.state} · expires {new Date(item.expires_at).toLocaleString()}</small><small>Grant: {item.grant_name ?? item.grant_id ?? 'legacy request'} · Policy: {item.policy_name ?? item.policy_id ?? 'legacy request'} · Rule: {item.matched_rule ?? 'unavailable'}</small><small>Declared cost: {item.cost_minor == null ? 'unavailable' : moneyLabel(item.cost_minor, item.currency)} · Request digest: {item.request_hash}</small><code>{item.id}</code></div>{item.state==='pending' && <div className="cpKeyActions"><button onClick={()=>void run(async()=>{const data=await api<{intent:unknown}>(`/v2/approvals/${item.id}/intent`);setApprovalIntent({id:item.id,intent:data.intent});})}>Inspect request</button><button disabled={approvalIntent?.id!==item.id} className="cpPrimary" onClick={()=>withReview('Approve exact request',[`Agent: ${item.agent_name}`,`Operation: ${item.method} ${item.path_pattern}`,`Grant: ${item.grant_name ?? item.grant_id}`,`Policy: ${item.policy_name ?? item.policy_id}; rule: ${item.matched_rule}`,`Declared cost: ${item.cost_minor == null ? 'unavailable' : moneyLabel(item.cost_minor, item.currency)}`,`Request digest: ${item.request_hash}`,`Expires: ${item.expires_at}`],async()=>{await api(`/v2/approvals/${item.id}/decision`,{decision:'approved'});await refresh();})}>Approve</button><button className="cpDanger" onClick={()=>withReview('Reject exact request',[`Agent: ${item.agent_name}`,`Operation: ${item.method} ${item.path_pattern}`,`Request digest: ${item.request_hash}`],async()=>{await api(`/v2/approvals/${item.id}/decision`,{decision:'rejected'});await refresh();})}>Reject</button></div>}</div>) : <Empty title="No approval requests" detail="A policy rule requiring approval will place an exact request here."/>}</section>}
+      {view === 'approvals' && <section className="cpCard"><span className="cpEyebrow">HUMAN DECISION</span><h2>Approval inbox</h2><p>Inspect before approving. Approval permits one exact retry.</p>
+        {approvalIntent && <div className="cpDetail"><h3>Request details</h3><p>Owner-only disclosure. Sensitive fields are redacted.</p><pre>{JSON.stringify(approvalIntent.intent,null,2)}</pre></div>}{approvals.length ? approvals.map(item=><div className="cpListRow" key={item.id}><span className="cpAvatar"><Icon name="inbox" size={18}/></span><div><strong>{item.agent_name} · {item.method} {item.path_pattern}</strong><small>{item.state} · expires {new Date(item.expires_at).toLocaleString()}</small><small>Grant: {item.grant_name ?? item.grant_id ?? 'legacy request'} · Policy: {item.policy_name ?? item.policy_id ?? 'legacy request'} · Rule: {item.matched_rule ?? 'unavailable'}</small><small>Declared cost: {item.cost_minor == null ? 'unavailable' : moneyLabel(item.cost_minor, item.currency)} · Request digest: {item.request_hash}</small><code>{item.id}</code></div><button onClick={()=>choose('approvals',item.id)}>View more</button>{item.state==='pending' && <div className="cpKeyActions"><button onClick={()=>void run(async()=>{const data=await api<{intent:unknown}>(`/v2/approvals/${item.id}/intent`);setApprovalIntent({id:item.id,intent:data.intent});})}>Inspect request</button><button disabled={approvalIntent?.id!==item.id} className="cpPrimary" onClick={()=>withReview('Approve exact request',[`Agent: ${item.agent_name}`,`Operation: ${item.method} ${item.path_pattern}`,`Grant: ${item.grant_name ?? item.grant_id}`,`Policy: ${item.policy_name ?? item.policy_id}; rule: ${item.matched_rule}`,`Declared cost: ${item.cost_minor == null ? 'unavailable' : moneyLabel(item.cost_minor, item.currency)}`,`Request digest: ${item.request_hash}`,`Expires: ${item.expires_at}`],async()=>{await api(`/v2/approvals/${item.id}/decision`,{decision:'approved'});await refresh();})}>Approve</button><button className="cpDanger" onClick={()=>withReview('Reject exact request',[`Agent: ${item.agent_name}`,`Operation: ${item.method} ${item.path_pattern}`,`Request digest: ${item.request_hash}`],async()=>{await api(`/v2/approvals/${item.id}/decision`,{decision:'rejected'});await refresh();})}>Reject</button></div>}</div>) : <Empty title="No approval requests" detail="Requests awaiting your decision appear here."/>}</section>}
 
-      {view === 'activity' && <section className="cpCard"><div className="cpCardHead"><span className="cpEyebrow"><i className="cpPulse"/> AUTO-UPDATING EVERY 3 SECONDS</span><h2>Agent activity</h2><p>Method, decision, rule and latency are recorded. Request and response bodies, secrets and query strings are excluded.</p></div>
+      {view === 'activity' && <section className="cpCard"><div className="cpCardHead"><span className="cpEyebrow"><i className="cpPulse"/> AUTO-UPDATING EVERY 3 SECONDS</span><h2>Agent activity</h2><p>Live decisions. Bodies and secrets excluded.</p></div>
         {activityError && <p role="alert">{activityError} <button onClick={() => void refreshActivity().catch(() => setActivityError('Activity is still unavailable.'))}>Retry activity</button></p>}
         <div className="cpFilters"><input aria-label="Search activity" placeholder="Search route, reason, agent" value={activityFilters.search} onChange={e=>setActivityFilters({...activityFilters,search:e.target.value})}/><select aria-label="Decision filter" value={activityFilters.decision} onChange={e=>setActivityFilters({...activityFilters,decision:e.target.value})}><option value="">All decisions</option><option value="allowed">Allowed</option><option value="denied">Denied</option><option value="pending_approval">Pending approval</option></select><select aria-label="Agent filter" value={activityFilters.agentId} onChange={e=>setActivityFilters({...activityFilters,agentId:e.target.value})}><option value="">All agents</option>{agents.map(item=><option key={item.id} value={item.id}>{item.name}</option>)}</select><button onClick={()=>void run(()=>refreshActivity())}>Search</button></div>
-        {activity.length ? <><div className="cpActivityTable"><div className="cpActivityHeader"><span>TIME / AGENT</span><span>REQUEST</span><span>DECISION</span><span>RULE / REASON</span><span>UPSTREAM</span></div>{activity.map(item=><button key={item.id} className="cpActivityRow" onClick={()=>void run(async()=>setActivityDetail(await api<Activity>(`/v2/activity/${item.id}`)))}><span><strong>{new Date(item.created_at).toLocaleTimeString()}</strong><small>{item.agent_name}</small></span><span><b>{item.method}</b> {item.route}</span><span className={`cpDecision ${item.decision}`}>{item.decision.replace('_',' ')}</span><span><strong>{item.matched_rule??'—'}</strong><small>{item.reason}</small></span><span>{item.upstream_status??'—'} · {item.latency_ms??'—'} ms</span></button>)}</div>
-          {activityCursor && <button onClick={()=>void run(()=>refreshActivity(true))}>Load older events</button>}</> : <Empty title="No activity yet" detail="Issue a key, call a registered GET through Pact, then try an unregistered path. Both decisions will appear here automatically."/>}
-        {activityDetail?.trace && <div className="cpDetail"><h3>Request {activityDetail.id}</h3><p>{activityDetail.method} {activityDetail.route} · {activityDetail.decision}</p><p>Agent {activityDetail.agent_id} · Key {activityDetail.key_id}</p><div className="cpActions">{activityDetail.grant_id && <button onClick={()=>{setView('grants');setSelected({id:activityDetail.grant_id!});}}>Inspect grant</button>}{activityDetail.policy_id && <button onClick={()=>{setView('policies');setSelected({id:activityDetail.policy_id!});}}>Inspect policy</button>}{activityDetail.approval_id && <button onClick={()=>choose('approvals')}>Open approval inbox</button>}</div><p>Approval {activityDetail.approval_id??'not required'} · Upstream {activityDetail.upstream_status??'not reached'}</p><h4>Decision trace</h4>{activityDetail.trace.map((step,i:number)=><p key={i}>{i+1}. <b>{step.name}</b> ({step.ruleId}) — {step.result}: {step.reason}</p>)}<p className="cpHint">Private gateway event. This entry is not independently anchored on Monad.</p></div>}</section>}
+        {activity.length ? <><div className="cpActivityTable"><div className="cpActivityHeader"><span>TIME / AGENT</span><span>REQUEST</span><span>DECISION</span><span>RULE / REASON</span><span>UPSTREAM</span></div>{activity.map(item=><button key={item.id} className="cpActivityRow" onClick={()=>choose('activity',item.id)}><span><strong>{new Date(item.created_at).toLocaleTimeString()}</strong><small>{item.agent_name}</small></span><span><b>{item.method}</b> {item.route}</span><span className={`cpDecision ${item.decision}`}>{item.decision.replace('_',' ')}</span><span><strong>{item.matched_rule??'—'}</strong><small>{item.reason}</small></span><span>{item.upstream_status??'—'} · {item.latency_ms??'—'} ms</span></button>)}</div>
+          {activityCursor && <button onClick={()=>void run(()=>refreshActivity(true))}>Load older events</button>}</> : <Empty title="No activity yet" detail="Call an endpoint through Pact to see its decision."/>}
+        {activityDetail?.trace && <div className="cpDetail"><h3>Request {activityDetail.id}</h3><p>{activityDetail.method} {activityDetail.route} · {activityDetail.decision}</p><p>Agent {activityDetail.agent_id} · Key {activityDetail.key_id}</p><div className="cpActions">{activityDetail.grant_id && <button onClick={()=>{setView('grants');setSelected({id:activityDetail.grant_id!});}}>Inspect grant</button>}{activityDetail.policy_id && <button onClick={()=>{setView('policies');setSelected({id:activityDetail.policy_id!});}}>Inspect policy</button>}{activityDetail.approval_id && <button onClick={()=>choose('approvals')}>Open approval inbox</button>}</div><p>Approval {activityDetail.approval_id??'not required'} · Upstream {activityDetail.upstream_status??'not reached'}</p><h4>Decision trace</h4>{activityDetail.trace.map((step,i:number)=><p key={i}>{i+1}. <b>{step.name}</b> ({step.ruleId}) — {step.result}: {step.reason}</p>)}<p className="cpHint">Private gateway log · not anchored onchain.</p></div>}</section>}
 
-      {view === 'audit' && <section className="cpCard"><span className="cpEyebrow">ACCOUNT CHANGES</span><h2>Audit history</h2><p>Changes to agents, grants, policies, services, endpoints, keys, and approvals are recorded with your account identity.</p>
+      {view === 'audit' && <section className="cpCard"><span className="cpEyebrow">ACCOUNT CHANGES</span><h2>Audit history</h2><p>Account changes, attributed and timestamped.</p>
         {auditEvents.length ? auditEvents.map(item => <div className="cpListRow" key={item.id}><span className="cpAvatar"><Icon name="book" size={17}/></span><div><strong>{item.action}</strong><small>{new Date(item.created_at).toLocaleString()}</small><code>{JSON.stringify(item.details)}</code></div></div>) : <Empty title="No changes yet" detail="Create an agent or policy to start an audit history."/>}
         {auditCursor && <button onClick={() => void run(() => refreshAudit(true))}>Load older changes</button>}</section>}
 
-      {view === 'account' && <div className="cpTwo"><section className="cpCard"><span className="cpEyebrow">ACCOUNT PRINCIPAL</span><h2>Your address</h2><p>Future HTTP grants use this address automatically. An account-assigned address identifies your Pact records but has no signing key. Monad transactions use your verified embedded Pact wallet or an external address you prove control of.</p>{account.principalAddress ? <div className="cpAddress"><code>{account.principalAddress}</code><Copy text={account.principalAddress}/></div> : <p>Your account address is being assigned. You can register agents while this finishes.</p>}{account.verificationStatus === 'verified' && <p className="cpVerified"><Icon name="check" size={16}/> Signing address verified by a one-time signature</p>}{account.verificationStatus === 'account_assigned' && <p className="cpVerified"><Icon name="check" size={16}/> Assigned to this signed-in Pact account for HTTP authority</p>}
+      {view === 'account' && <div className="cpTwo"><section className="cpCard"><span className="cpEyebrow">ACCOUNT PRINCIPAL</span><h2>Your address</h2><p>Used automatically for new grants. Monad signing requires a verified wallet.</p>{account.principalAddress ? <div className="cpAddress"><code>{account.principalAddress}</code><Copy text={account.principalAddress}/></div> : <p>Your account address is being assigned. You can register agents while this finishes.</p>}{account.verificationStatus === 'verified' && <p className="cpVerified"><Icon name="check" size={16}/> Signing address verified</p>}{account.verificationStatus === 'account_assigned' && <p className="cpVerified"><Icon name="check" size={16}/> Account-owned HTTP authority</p>}
         {account.verificationStatus==='account_assigned' && <button className="cpPrimary" disabled={busy || !wallets.some(w=>w.walletClientType==='privy')} onClick={()=>withReview('Enable Monad signing',[
           'Use the embedded wallet belonging to your signed-in account. No shared Pact private key is used.',
           'Sign an account ownership message. Existing HTTP grants retain their original principal until you migrate them.',
@@ -554,7 +588,7 @@ export function ControlConsole() {
           await api('/v2/account/address/verify',{challengeId:challenge.challengeId,signature});
           setAccount(await api<Account>('/v2/account'));setNotice('Your Pact wallet is verified. Deploy its Monad account when you are ready to transact.');
         })}>Enable Monad signing with my Pact wallet</button>}
-        <h3>Monad account</h3><p>{account.onchainStatus==='deployed' ? `Controlled account: ${account.onchainAccount}` : account.onchainStatus==='external_proof_required' ? 'Enable your embedded Pact wallet below to use Monad transactions. HTTP agents work immediately without signing.' : account.onchainStatus==='factory_unconfigured' ? 'Per-user Monad account deployment is not configured by the operator yet.' : account.onchainStatus==='rpc_unavailable' ? 'Monad status is temporarily unavailable. HTTP agent management remains available.' : 'No controlled Monad account has been deployed for this address. HTTP agents work without it.'}</p>
+        <h3>Monad account</h3><p>{account.onchainStatus==='deployed' ? `Controlled account: ${account.onchainAccount}` : account.onchainStatus==='external_proof_required' ? 'Enable signing for Monad transactions.' : account.onchainStatus==='factory_unconfigured' ? 'Account factory not configured.' : account.onchainStatus==='rpc_unavailable' ? 'Chain status unavailable. HTTP agents remain available.' : 'Not deployed. HTTP agents need no onchain account.'}</p>
         {account.onchainStatus==='not_deployed' && account.verificationStatus==='verified' && <button onClick={()=>withReview('Deploy your Monad account',[
           `Signer: ${account.principalAddress}`,'This is a real Monad transaction. Your account wallet must have MON for gas. The integration key cannot sign it.'
         ],async()=>{
@@ -567,7 +601,7 @@ export function ControlConsole() {
           setNotice(`Monad transaction submitted: ${String(hash)}. Refresh Account after confirmation.`);
         })}>Review account deployment</button>}
         <button onClick={()=>void run(async()=>setAccount(await api<Account>('/v2/account')))}>Refresh chain status</button>
-        <h3>Change principal address</h3><p>The new address must sign a Pact challenge. Existing grants keep their original principal. Use each HTTP grant's audited migration action afterward; existing Monad grants require a separate signed reissuance.</p><Field label="New address"><input value={changeAddress} onChange={e=>setChangeAddress(e.target.value)} placeholder="0x…"/></Field>
+        <h3>Change principal address</h3><p>Proof of control required. Existing grants keep their owner until migrated or reissued.</p><Field label="New address"><input value={changeAddress} onChange={e=>setChangeAddress(e.target.value)} placeholder="0x…"/></Field>
         <button onClick={() => connectWallet()}>Connect address to verify</button>
         <button disabled={busy || !/^0x[0-9a-fA-F]{40}$/.test(changeAddress)} onClick={()=>withReview('Change principal address',[`Current: ${account.principalAddress}`,`New: ${changeAddress}`,'Existing grants remain under their original principal and must be reissued explicitly.'],async()=>{
           const matching=wallets.find(item=>item.address.toLowerCase()===changeAddress.toLowerCase());
@@ -579,7 +613,8 @@ export function ControlConsole() {
           setAccount(await api<Account>('/v2/account'));await refresh();setChangeAddress('');setNotice('Principal changed for future grants. Existing grants are unchanged.');
         })}>Review address change</button>
         <button onClick={()=>void run(async()=>{await linkWithPasskey({name:'Pact Console'});setNotice('Passkey added to your account.');})}>Add passkey</button></section>
-        <section className="cpCard"><span className="cpEyebrow">MIGRATION & CUSTODY</span><h2>Existing grants</h2><p>Wallet-backed Monad grants continue to use the principal that signed them. Changing this account address cannot mutate immutable grant history.</p><p>{legacyCount===null?'Check your existing grant list before migrating.':`${legacyCount} indexed legacy grants are visible to the original principal session.`}</p><a href="/legacy">Open existing Monad grant manager ↗</a><a href="/docs#custody">Read custody, recovery and revocation model ↗</a><p className="cpHint">For HTTP grants, use the migration action in Grants. For Monad grants, revoke with the original signer, create a new grant with the new signer, then rotate affected credentials.</p></section></div>}
+        <section className="cpCard"><span className="cpEyebrow">MIGRATION & CUSTODY</span><h2>Existing grants</h2><p>Existing Monad grants retain their original signer.</p><p>{legacyCount===null?'Check your existing grant list before migrating.':`${legacyCount} indexed legacy grants are visible to the original principal session.`}</p><a href="/legacy">Open existing Monad grant manager ↗</a><a href="/docs#custody">Read custody, recovery and revocation model ↗</a><p className="cpHint">HTTP: migrate in Grants. Monad: revoke and reissue, then rotate keys.</p></section></div>}
+      </>}
       </>}
       </main><footer className="cpFooter"><span>PACT PROTOCOL · Programmable authority for agents</span><span>Private gateway activity · Monad receipts only when anchored</span></footer></div>
     {review && <div className="cpReviewShade" role="presentation"><div className="cpReview" role="dialog" aria-modal="true" aria-label={review.title}><span className="cpEyebrow">REVIEW BEFORE APPLYING</span><h2>{review.title}</h2><ul>{review.summary.map((line,i)=><li key={i}>{line}</li>)}</ul><div className="cpActions"><button onClick={()=>setReview(undefined)}>Cancel</button><button className="cpPrimary" onClick={confirm} disabled={busy}>Confirm change</button></div></div></div>}

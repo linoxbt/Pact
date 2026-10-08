@@ -20,6 +20,7 @@ import { registerBillingRoutes, type BillingConfig } from './billing.js';
 import type { CredentialCipher, DeploymentSecretCipher, EvidenceStore } from '@pact/security';
 import { registerControlPlaneRoutes } from './control-plane.js';
 import { registerVerificationRoutes } from './verification.js';
+import { registerDashboardRoutes } from './dashboard.js';
 
 export type ApiContext = Readonly<{
   database: Database;
@@ -358,6 +359,7 @@ export async function createApi(ctx: ApiContext): Promise<FastifyInstance> {
   if (ctx.ownerAuth) {
     registerControlPlaneRoutes(app, ctx);
     registerVerificationRoutes(app, ctx);
+    registerDashboardRoutes(app, ctx);
   }
   return app;
 }

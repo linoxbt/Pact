@@ -22,4 +22,4 @@ Railway project `pact-testnet` uses PostgreSQL, API, gateway, indexer and a supe
 
 Cloudflare builds `apps/console` with public API/gateway/Privy values and `VITE_PACT_CHAIN_ID=10143`. The same origin must be allowed in Privy. Provider-backed runs require a configured provider credential. Pact-funded credit is testnet-only and disabled unless its separate token, treasury and rate configuration is supplied.
 
-For live gateway checks, sign in, open Overview and choose **Run live enforcement check**. It uses actual API, PostgreSQL and gateway requests under that signed-in user. It is distinct from a model-provider run and from onchain transaction verification.
+For live gateway checks, sign in, open **Verification** and choose **Run live enforcement check**. It uses actual API, PostgreSQL and gateway requests under that signed-in user. It is distinct from a model-provider run and from onchain transaction verification.

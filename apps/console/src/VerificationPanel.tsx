@@ -22,12 +22,12 @@ export function VerificationPanel({control,onComplete}:{
     finally {running.current=false;setBusy(false);}
   };
   return <section className="cpCard"><span className="cpEyebrow">LIVE ENFORCEMENT CHECK</span>
-    <h2>Test Pact with a temporary agent</h2>
-    <p>This creates real records in your account and makes harmless requests through the deployed gateway.
-      It tests grants, ordered policies, protected secrets, approval, scopes, rotation, revocation and activity.
-      Starting authorizes approval of one test request that changes no external data. No wallet, funds or model key is used.</p>
-    <p>The test disables its agent and removes credentials afterwards. Records remain in your audit history.
-      Keep this page open until cleanup completes. Keys and grants expire after 20 minutes.</p>
+    <h2>Verify enforcement</h2>
+    <p>Real gateway requests. Temporary agent. No funds or model key.</p>
+    <p>Includes one approved test request. The agent and credentials are disabled afterward.</p>
+    <details><summary>Test scope and cleanup</summary><p>Checks grants, policies, secrets, approvals, scopes, rotation, revocation and activity.
+      Starting authorizes one harmless approval. Keep this page open until cleanup completes.
+      Keys and grants expire after 20 minutes. Audit records remain.</p></details>
     <button className="cpPrimary" disabled={busy} onClick={()=>void start()}>{busy?'Verifying live requests…':'Run live enforcement check'}</button>
     <ol aria-live="polite">{steps.map(step=><li key={step}>{step}</li>)}</ol>
     {error && <p role="alert">{error}</p>}

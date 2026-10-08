@@ -16,7 +16,8 @@ test('verification flow executes real HTTP, records denies, and cleans up creden
     await database.query(`INSERT INTO pact_users(id,privy_did,principal_address,principal_status)
       VALUES($1,$2,$3,'account_assigned')`,[owner.id,owner.did,owner.principalAddress]);
     const cipher=new DeploymentSecretCipher('ab'.repeat(32));
-    const api=await createApi({database,credentials:cipher,ownerAuth:{authenticate:async()=>owner},
+    let identity=owner;
+    const api=await createApi({database,credentials:cipher,ownerAuth:{authenticate:async()=>identity},
       rpc:{},pact:{},auth:{},operations:{},allowedOrigin:'http://localhost'});
     const gateway=await createGateway({database,auth:{},pact:{},secrets:{},
       proxy:{database,cipher,allowLocalUpstream:true}});
@@ -37,6 +38,22 @@ test('verification flow executes real HTTP, records denies, and cleans up creden
       const report=await verifyGatewayEnforcement({apiOrigin,gatewayOrigin,control});
       assert.equal(report.passed,true,JSON.stringify(report));
       assert.ok(report.requestIds.length>=10);
+      const dashboard=await control('/v2/dashboard');
+      assert.equal(dashboard.stats.requests,report.requestIds.length);
+      assert.equal(dashboard.stats.allowed,3);
+      assert.equal(dashboard.stats.pending,1);
+      assert.equal(dashboard.agentStats[0].agent_id,report.agentId);
+      assert.equal(dashboard.keyStats[0].active,0);
+      assert.equal(dashboard.hourly.reduce((sum,row)=>sum+row.allowed+row.denied+row.pending,0),dashboard.stats.requests);
+      const keyId=(await database.query('SELECT id FROM pact_integration_keys WHERE owner_id=$1 LIMIT 1',[owner.id])).rows[0].id;
+      const key=await control(`/v2/keys/${keyId}`);
+      assert.equal(key.agent_id,report.agentId);assert.equal(key.token_hash,undefined);
+      identity={...owner,id:randomUUID()};
+      const other=await control('/v2/dashboard');
+      assert.equal(other.stats.requests,0);assert.deepEqual(other.recent,[]);
+      assert.deepEqual(other.agentStats,[]);assert.deepEqual(other.keyStats,[]);
+      assert.equal((await fetch(apiOrigin+`/v2/keys/${keyId}`,{headers:{Authorization:'Bearer other-owner'}})).status,404);
+      identity=owner;
       const active=await database.query(`SELECT count(*)::int AS count FROM pact_integration_keys
         WHERE owner_id=$1 AND revoked_at IS NULL`,[owner.id]);
       assert.equal(active.rows[0].count,0);

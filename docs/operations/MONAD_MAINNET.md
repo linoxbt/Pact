@@ -40,6 +40,6 @@ Production activation still requires configured KMS/encrypted evidence/IAM, veri
 
 ## Live verification
 
-Console Overview → **Run live enforcement check** uses the signed-in user's real authorization. It provisions a temporary zero-spend HTTP grant, ordered policy, scoped keys and encrypted upstream secret. It checks allow/deny, upstream counters, approval, rotation, grant revocation, key revocation, sensitive field redaction and activity request IDs. The agent is disabled and keys/secrets removed afterward. Requests are harmless test operations; records remain in audit history.
+Console Overview → **Test enforcement** → **Run live enforcement check** uses the signed-in user's real authorization. It provisions a temporary zero-spend HTTP grant, ordered policy, scoped keys and encrypted upstream secret. It checks allow/deny, upstream counters, approval, rotation, grant revocation, key revocation, sensitive field redaction and activity request IDs. The agent is disabled and keys/secrets removed afterward. Requests are harmless test operations; records remain in audit history.
 
 This checks HTTP enforcement. It is not a language-model run or an onchain receipt. A real model-backed run requires a dedicated provider key stored through Pact's credential flow; Codex session credentials are not exportable API keys. Hosted Privy verification requires the user to sign in; local browser tests replace only identity for repeatability.

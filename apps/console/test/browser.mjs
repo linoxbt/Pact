@@ -3,7 +3,7 @@
 import assert from 'node:assert/strict';
 import {randomUUID,randomBytes} from 'node:crypto';
 import {spawn} from 'node:child_process';
-import {mkdtemp,rm} from 'node:fs/promises';
+import {mkdtemp,rm,writeFile} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import {join,resolve} from 'node:path';
 import {createServer} from 'vite';
@@ -74,9 +74,10 @@ try {
   const waitFor=async expression=>{for(let i=0;i<100;i++){if(await evaluate(`Boolean(document.body && (${expression}))`))return;await new Promise(r=>setTimeout(r,100));}throw Error(`Timed out: ${expression}`);};
   const click=async label=>{await waitFor(`[...document.querySelectorAll('button')].some(b=>b.textContent.trim()===${JSON.stringify(label)} && !b.disabled)`);return evaluate(`[...document.querySelectorAll('button')].find(b=>b.textContent.trim()===${JSON.stringify(label)})?.click()`);};
   const input=(label,value)=>evaluate(`(()=>{const e=[...document.querySelectorAll('label')].find(l=>l.querySelector('span')?.textContent===${JSON.stringify(label)}).querySelector('input,textarea,select');Object.getOwnPropertyDescriptor(Object.getPrototypeOf(e),'value').set.call(e,${JSON.stringify(value)});e.dispatchEvent(new Event('input',{bubbles:true}));e.dispatchEvent(new Event('change',{bubbles:true}));})()`);
+  await call('Emulation.setDeviceMetricsOverride',{width:1440,height:1100,deviceScaleFactor:1,mobile:false});
   await call('Page.navigate',{url:'http://127.0.0.1:4198/test/browser/index.html'});
-  await waitFor(`document.body.innerText.includes('Connect an agent. Keep control.')`);
-  await waitFor(`document.body.innerText.includes('Register a service') && !document.body.innerText.includes('Loading your workspace')`);
+  await waitFor(`document.body.innerText.includes('Your agents, authority and activity.')`);
+  await waitFor(`document.querySelector('.dbDashboard') && !document.body.innerText.includes('Loading your workspace')`);
   await click('Agents');await waitFor(`document.body.innerText.includes('Agent name')`);
   const name=`Browser agent ${randomUUID()}`;
   await input('Agent name',name);await click('Review agent');await waitFor(`document.querySelector('[role="dialog"]')`);
@@ -117,7 +118,7 @@ try {
   await waitFor(`document.body.innerText.includes('${approvalId}')`);
   const row=`[...document.querySelectorAll('.cpListRow')].find(row=>row.textContent.includes('${approvalId}'))`;
   assert.equal(await evaluate(`${row}.querySelector('.cpPrimary').disabled`),true);
-  await evaluate(`${row}.querySelector('button').click()`);
+  await evaluate(`[...${row}.querySelectorAll('button')].find(b=>b.textContent==='Inspect request').click()`);
   await waitFor(`document.querySelector('pre')?.textContent.includes('/health')`);
   await evaluate(`${row}.querySelector('.cpPrimary').click()`);await click('Confirm change');
   await waitFor(`${row}?.textContent.includes('approved')`);
@@ -131,16 +132,30 @@ try {
   await waitFor(`document.body.innerText.includes('Upstream secret')`);await input('Upstream secret','browser-failure-secret');
   await click('Review service');await click('Confirm change');
   await waitFor(`document.body.innerText.includes('Service registered; credential setup failed')`);
-  assert.ok(await evaluate(`document.body.innerText.includes('Replacement upstream secret')`));
+  await click('Manage');assert.ok(await evaluate(`document.body.innerText.includes('Replacement upstream secret')`));
   assert.equal((await database.query('SELECT count(*)::int count FROM pact_services WHERE agent_id=$1 AND name=$2',
     [agentId,'Credential failure recovery'])).rows[0].count,1);
-  await click('Overview');await click('Run live enforcement check');
+  await click('Overview');await click('Test enforcement');await click('Run live enforcement check');
   await waitFor(`document.body.innerText.includes('Verification passed')`);
   assert.equal(await evaluate(`document.body.innerText.includes('Cleanup needs attention')`),false);
+  await click('Overview');await waitFor(`document.querySelector('.dbAgents')?.innerText.includes('Pact enforcement verification')`);
+  await waitFor(`document.querySelector('.dbChartSummary')?.innerText.includes('Allowed')`);
+  assert.ok(await evaluate(`Number(document.querySelectorAll('.dbMetric strong')[1].textContent)>0`));
+  await writeFile('/tmp/pact-dashboard-desktop.png',Buffer.from((await call('Page.captureScreenshot',{format:'png'})).data,'base64'));
+  await evaluate(`document.querySelector('[aria-label="View Pact enforcement verification"]').click()`);
+  await waitFor(`document.querySelector('.dbResourceHero')?.innerText.includes('Pact enforcement verification')`);
+  await waitFor(`document.body.innerText.includes('Verification HTTP authority')`);
+  assert.ok(await evaluate(`location.hash.startsWith('#agents/')`));
+  await call('Page.reload');await waitFor(`document.querySelector('.dbResourceHero')?.innerText.includes('Pact enforcement verification')`);
+  await evaluate(`history.back()`);await waitFor(`document.querySelector('.dbDashboard')`);
+  await call('Emulation.setDeviceMetricsOverride',{width:390,height:844,deviceScaleFactor:1,mobile:true});
+  assert.equal(await evaluate(`document.documentElement.scrollWidth>innerWidth`),false);
+  await writeFile('/tmp/pact-dashboard-mobile.png',Buffer.from((await call('Page.captureScreenshot',{format:'png'})).data,'base64'));
+  await call('Emulation.setDeviceMetricsOverride',{width:1440,height:1100,deviceScaleFactor:1,mobile:false});
   await evaluate(`document.querySelector('[aria-label="Collapse sidebar"]').click()`);
   assert.equal(await evaluate(`localStorage.getItem('pact:sidebar-collapsed')`),'true');
   await click('Account');await waitFor(`document.body.innerText.includes(${JSON.stringify(owners[0].principalAddress)})`);
-  await click('Sign out');await waitFor(`document.body.innerText.includes('Connect an agent. Keep control.')`);
+  await click('Sign out');await waitFor(`document.body.innerText.includes(${JSON.stringify(owners[1].principalAddress)})`);
   await click('Agents');await waitFor(`document.body.innerText.includes('Agent name')`);
   assert.equal(await evaluate(`document.body.innerText.includes(${JSON.stringify(name)})`),false);
   await click('Account');await waitFor(`document.body.innerText.includes(${JSON.stringify(owners[1].principalAddress)})`);
@@ -150,5 +165,5 @@ try {
   ws?.close();chrome.kill('SIGTERM');await vite.close();await api.close();await gateway.close();
   upstream.closeAllConnections();await new Promise(resolve=>upstream.close(resolve));await database.end();
   await new Promise(r=>chrome.exitCode!==null || chrome.signalCode!==null || !chrome.pid?r():chrome.once('exit',r));
-  await rm(profile,{recursive:true,force:true});
+  await rm(profile,{recursive:true,force:true,maxRetries:5,retryDelay:200});
 }

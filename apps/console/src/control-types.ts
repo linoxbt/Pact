@@ -21,3 +21,10 @@ export type Activity = {id:string;agent_id:string;agent_name:string;key_id:strin
   upstream_status:number|null;latency_ms:number|null;execution_state:string|null;trace:DecisionTrace[]};
 export type AuditEvent = {id:string;created_at:string;action:string;actor:string;details:Record<string,unknown>};
 export type OpenApiPreview = {origin:string;operations:{method:string;pathPattern:string;description:string}[]};
+export type DashboardData = {
+  stats:{requests:number;allowed:number;denied:number;pending:number;latency_ms:number|null};
+  hourly:{hour:string;allowed:number;denied:number;pending:number}[];
+  recent:Activity[];
+  agentStats:{agent_id:string;requests:number;allowed:number;denied:number;pending:number;latency_ms:number|null;last_seen:string}[];
+  keyStats:{agent_id:string;active:number}[];since:string;updatedAt:string;
+};
