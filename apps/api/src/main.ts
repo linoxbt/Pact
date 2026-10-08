@@ -6,6 +6,7 @@ import { KMSClient } from '@aws-sdk/client-kms';
 import { S3Client } from '@aws-sdk/client-s3';
 import { CredentialCipher, DeploymentSecretCipher, EvidenceStore } from '@pact/security';
 import { createApi } from './server.js';
+import {loadActionFees} from './action-fees.js';
 import { loadBillingConfig } from './billing.js';
 
 const config = loadCoreConfig();
@@ -41,12 +42,14 @@ const credentials = credentialKeyId ? new CredentialCipher(new KMSClient({}), cr
   config.environment !== 'production' && process.env.PACT_VAULT_MASTER_KEY ?
     new DeploymentSecretCipher(process.env.PACT_VAULT_MASTER_KEY) : undefined;
 const billing = loadBillingConfig(process.env);
+const actionFees=loadActionFees(process.env,config.chainId);
 const accountFactory = process.env.PACT_ACCOUNT_FACTORY;
 if (accountFactory && !isAddress(accountFactory)) throw new Error('Invalid PACT_ACCOUNT_FACTORY');
 if (billing && await rpc.readContract({ address: billing.token, abi: erc20Abi,
   functionName: 'decimals' }) !== 6)
   throw new Error('Pact-funded testnet token must have exactly six decimals');
 const app = await createApi({ database, rpc, pact, auth, operations,
+  ...(actionFees ? {actionFees} : {}),
   allowedOrigin: process.env.PACT_EXPLORER_ORIGIN ? [allowedOrigin, process.env.PACT_EXPLORER_ORIGIN] : allowedOrigin,
   ...(evidence ? { evidence } : {}), ...(credentials ? { credentials } : {}),
   customModelEndpoints: (process.env.PACT_CUSTOM_MODEL_ENDPOINTS ?? '').split(',').filter(Boolean),

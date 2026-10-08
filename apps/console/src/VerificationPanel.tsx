@@ -1,9 +1,10 @@
 import { useRef, useState } from 'react';
 import { verifyGatewayEnforcement } from '@pact/sdk-ts';
 
-export function VerificationPanel({control,onComplete}:{
+export function VerificationPanel({control,onComplete,feesEnabled}:{
   control:(path:string,body?:unknown,method?:string)=>Promise<Record<string,unknown>>;
   onComplete:()=>Promise<void>;
+  feesEnabled?:boolean;
 }) {
   const running=useRef(false);
   const [busy,setBusy]=useState(false);
@@ -23,7 +24,7 @@ export function VerificationPanel({control,onComplete}:{
   };
   return <section className="cpCard"><span className="cpEyebrow">LIVE ENFORCEMENT CHECK</span>
     <h2>Verify enforcement</h2>
-    <p>Real gateway requests. Temporary agent. No funds or model key.</p>
+    <p>{feesEnabled?'Creates paid test resources: 5 MON per agent, grant, policy and key, approved separately.':'Real gateway requests. Temporary agent. No funds or model key.'}</p>
     <p>Includes one approved test request. The agent and credentials are disabled afterward.</p>
     <details><summary>Test scope and cleanup</summary><p>Checks grants, policies, secrets, approvals, scopes, rotation, revocation and activity.
       Starting authorizes one harmless approval. Keep this page open until cleanup completes.

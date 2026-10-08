@@ -1,6 +1,7 @@
 import { activeNetwork, networkNotice } from './networks.js';
 import { useEffect, useRef, useState } from 'react';
 import { getAccessToken, useConnectWallet, usePrivy, useWallets } from '@privy-io/react-auth';
+import {ActionPayment,PaymentHistory,type Payment,type FeeConfig} from './ActionPayment.js';
 import {AccountSecurity} from './AccountSecurity.js';
 import { Brand, Icon } from './ui.js';
 import './control.css';
@@ -31,7 +32,7 @@ const nav: { id: View; label: string; icon: string }[] = [
 const readRoute=()=>{const [page,id]=window.location.hash.slice(1).split('/');return {view:(nav.some(x=>x.id===page)?page:'overview') as View,id:id&&/^[0-9a-f-]{36}$/i.test(id)?id:undefined};};
 const json = (value: unknown) => JSON.stringify(value, (_key, field) =>
   typeof field === 'bigint' ? field.toString() : field);
-async function requestControl<T = Item>(path: string, body?: unknown, method?: string, scope?: {signal:AbortSignal;did?:string}): Promise<T> {
+async function requestControl<T = Item>(path: string, body?: unknown, method?: string, scope?: {signal:AbortSignal;did?:string},paymentId?:string): Promise<T> {
   if (!apiOrigin) throw Error('Pact API URL is not configured');
   const token = await getAccessToken();
   if (!token) throw Error('Your sign in expired. Please sign in again.');
@@ -42,6 +43,7 @@ async function requestControl<T = Item>(path: string, body?: unknown, method?: s
   }
   const response = await fetch(new URL(path, apiOrigin), { method: method ?? (body === undefined ? 'GET' : 'POST'),
     redirect: 'error', signal:scope ? AbortSignal.any([scope.signal,AbortSignal.timeout(15_000)]) : AbortSignal.timeout(15_000), headers: { Authorization: `Bearer ${token}`,
+      ...(paymentId ? {'x-pact-payment':paymentId} : {}),
       ...(body === undefined ? {} : { 'Content-Type': 'application/json' }) },
     ...(body === undefined ? {} : { body: json(body) }) });
   const data = await response.json().catch(() => ({})) as Item;
@@ -89,7 +91,15 @@ export function ControlConsole() {
   const { ready, authenticated, login, logout, user } = usePrivy();
   const lifetime=useRef(new AbortController());
   useEffect(()=>{if(lifetime.current.signal.aborted)lifetime.current=new AbortController();const current=lifetime.current;return()=>current.abort();},[]);
-  const api=<T=Item,>(path:string,body?:unknown,method?:string)=>requestControl<T>(path,body,method,{signal:lifetime.current.signal,did:user?.id});
+  const rawApi=<T=Item,>(path:string,body?:unknown,method?:string,paymentId?:string)=>requestControl<T>(path,body,method,{signal:lifetime.current.signal,did:user?.id},paymentId);
+  const [feeConfig,setFeeConfig]=useState<FeeConfig>();
+  const [paymentTask,setPaymentTask]=useState<{path:string;body:unknown;existing?:Payment;resolve:(value:Item)=>void;reject:(cause:Error)=>void}>();
+  const api=async<T=Item,>(path:string,body?:unknown,method?:string):Promise<T>=>{
+    const billable=(method??(body===undefined?'GET':'POST'))==='POST'&&(/^\/v2\/(agents|grants|policies)$/.test(path)||/^\/v2\/agents\/[^/]+\/keys$/.test(path));
+    if(billable){const config=await rawApi<FeeConfig>('/v2/fees/config');if(config.enabled)return new Promise<T>((resolve,reject)=>setPaymentTask({path,body,resolve:value=>resolve(value as T),reject}));}
+    return rawApi<T>(path,body,method);
+  };
+  useEffect(()=>{if(authenticated)void rawApi<FeeConfig>('/v2/fees/config').then(setFeeConfig).catch(()=>setFeeConfig(undefined));},[authenticated,user?.id]);
   const activityGeneration=useRef(0);
   const keyGeneration=useRef(0);
   const activityLatest=useRef<Activity[]>([]);
@@ -368,7 +378,7 @@ export function ControlConsole() {
           ''}</p></div>
         {authenticated && account?.principalAddress && <div className="cpPrincipalBadge"><small>YOUR PRINCIPAL ADDRESS</small><code title={account.principalAddress}>{short(account.principalAddress)}</code><span>{account.verificationStatus}</span></div>}</div>
       {notice && <div className="cpNotice" role="status">{notice}<button disabled={busy} onClick={()=>void run(refresh)}>Retry loading</button><button onClick={() => setNotice('')} aria-label="Dismiss">×</button></div>}
-      {authenticated && view==='account' && <AccountSecurity key={user?.id}/>}
+      {authenticated && view==='account' && <><AccountSecurity key={user?.id}/><PaymentHistory key={`payments:${user?.id}`} api={rawApi} onResume={existing=>setPaymentTask({path:existing.path,body:existing.payload,existing,resolve:()=>{setNotice('Paid action completed.');void refresh();},reject:cause=>setNotice(cause.message)})}/></>}
       {!ready && <p className="cpLoading">Loading account…</p>}
       {ready && !authenticated && <section className="cpHeroPanel"><span className="cpEyebrow">YOUR AGENT WORKSPACE</span><h2>Start with your account.</h2>
         <p>Email, passkey or wallet. HTTP agents need no wallet.</p>
@@ -381,7 +391,7 @@ export function ControlConsole() {
       {authenticated && controlStatus === 'ready' && account?.verificationStatus === 'unverified' && <section className="cpCard" role="status"><span className="cpEyebrow">ACCOUNT SETUP</span><h2>Your account address is being assigned.</h2><p>Agent and HTTP grant management will be available when this finishes.</p><button onClick={() => setConnectionAttempt(value => value + 1)}>Retry account setup</button></section>}
       {authenticated && controlStatus === 'ready' && account && <>
       {view === 'overview' && <Dashboard agents={agents} grants={grants} policies={policies} endpoints={endpoints} approvals={approvals} data={dashboard} error={dashboardError} navigate={choose} retry={()=>void run(refresh)}/>}
-      {view === 'verification' && <VerificationPanel control={api} onComplete={refresh}/>}
+      {view === 'verification' && <VerificationPanel feesEnabled={feeConfig?.enabled} control={api} onComplete={refresh}/>}
       {showDetail && selected && <ResourceDetail view={view} id={selected.id} agents={agents} grants={grants} policies={policies} services={services} endpoints={endpoints} keys={view==='keys'&&detailKey?[detailKey]:keys} approvals={approvals} agentActivity={agentActivity} activity={activityDetail?.id===selected.id?activityDetail:undefined} data={dashboard} navigate={choose} manage={()=>{setDetailEditing(true);if(view==='endpoints'&&endpointDetail)setResponseFieldsDraft(endpointDetail.response_fields.join(', '));if(view==='agents'&&agentDetail){setEditAgentId(agentDetail.id);setAgentForm({name:agentDetail.name,environment:agentDetail.environment,description:agentDetail.description});}}}/>}
       {!showDetail && <>
 
@@ -618,6 +628,7 @@ export function ControlConsole() {
       </>}
       </>}
       </main><footer className="cpFooter"><span>PACT PROTOCOL · Programmable authority for agents</span><span>Private gateway activity · Monad receipts only when anchored</span></footer></div>
-    {review && <div className="cpReviewShade" role="presentation"><div className="cpReview" role="dialog" aria-modal="true" aria-label={review.title}><span className="cpEyebrow">REVIEW BEFORE APPLYING</span><h2>{review.title}</h2><ul>{review.summary.map((line,i)=><li key={i}>{line}</li>)}</ul><div className="cpActions"><button onClick={()=>setReview(undefined)}>Cancel</button><button className="cpPrimary" onClick={confirm} disabled={busy}>Confirm change</button></div></div></div>}
+    {paymentTask && <ActionPayment api={rawApi} path={paymentTask.path} body={paymentTask.body} existing={paymentTask.existing} onDone={value=>{paymentTask.resolve(value);setPaymentTask(undefined);void rawApi<Account>('/v2/account').then(setAccount);}} onCancel={()=>{paymentTask.reject(Error('Payment closed. Resume pending payments from Account.'));setPaymentTask(undefined);}}/>}
+    {review && <div className="cpReviewShade" role="presentation"><div className="cpReview" role="dialog" aria-modal="true" aria-label={review.title}><span className="cpEyebrow">REVIEW BEFORE APPLYING</span><h2>{review.title}</h2>{feeConfig?.enabled && ['Register agent','Create HTTP grant','Create ordered policy','Issue scoped key'].includes(review.title) && <p><strong>Fee: 5 MON + network gas</strong></p>}<ul>{review.summary.map((line,i)=><li key={i}>{line}</li>)}</ul><div className="cpActions"><button onClick={()=>setReview(undefined)}>Cancel</button><button className="cpPrimary" onClick={confirm} disabled={busy}>Confirm change</button></div></div></div>}
   </div>;
 }

@@ -20,6 +20,7 @@ import { registerBillingRoutes, type BillingConfig } from './billing.js';
 import type { CredentialCipher, DeploymentSecretCipher, EvidenceStore } from '@pact/security';
 import { registerControlPlaneRoutes } from './control-plane.js';
 import { registerVerificationRoutes } from './verification.js';
+import {registerActionFees,type ActionFees} from './action-fees.js';
 import { registerDashboardRoutes } from './dashboard.js';
 
 export type ApiContext = Readonly<{
@@ -33,6 +34,7 @@ export type ApiContext = Readonly<{
   credentials?: CredentialCipher | DeploymentSecretCipher;
   customModelEndpoints?: string[];
   billing?: BillingConfig;
+  actionFees?: ActionFees;
   ownerAuth?: OwnerAuthService;
   accountFactory?: `0x${string}`;
 }>;
@@ -65,7 +67,7 @@ export async function createApi(ctx: ApiContext): Promise<FastifyInstance> {
   });
   await app.register(helmet);
   await app.register(cors, { origin: ctx.allowedOrigin, methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'],
-    allowedHeaders: ['authorization', 'content-type', 'x-idempotency-key', 'x-pact-evidence-type'] });
+    allowedHeaders: ['authorization', 'content-type', 'x-idempotency-key', 'x-pact-evidence-type', 'x-pact-payment'] });
   app.setErrorHandler((cause, _request, reply) => {
     if (cause instanceof Error && 'code' in cause && cause.code === 'P0001' &&
         cause.message === 'RESOURCE_QUOTA_EXCEEDED')
@@ -360,6 +362,7 @@ export async function createApi(ctx: ApiContext): Promise<FastifyInstance> {
     registerControlPlaneRoutes(app, ctx);
     registerVerificationRoutes(app, ctx);
     registerDashboardRoutes(app, ctx);
+    registerActionFees(app,ctx);
   }
   return app;
 }

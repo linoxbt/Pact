@@ -25,12 +25,13 @@ for(const label of ['one','two']) {
   owners.push(owner);
 }
 const cipher=new DeploymentSecretCipher('ab'.repeat(32));
-const api=await createApi({database,allowedOrigin:'http://127.0.0.1:4198',credentials:{
+const apiContext={database,allowedOrigin:'http://127.0.0.1:4198',credentials:{
   seal:async(identity,value)=>{if(value==='browser-failure-secret')throw Error('INJECTED_VAULT_FAILURE');return cipher.seal(identity,value);},
   open:(...args)=>cipher.open(...args)},
   ownerAuth:{authenticate:async header=>{
     const token=header?.replace('Bearer ','');const sub=JSON.parse(Buffer.from(token.split('.')[1],'base64').toString()).sub;
-    return owners.find(owner=>owner.did===sub);}},auth:{},pact:{},rpc:{},operations:{}});
+    return owners.find(owner=>owner.did===sub);}},auth:{},pact:{},rpc:{},operations:{}};
+const api=await createApi(apiContext);
 let failPolicyRead=false;
 api.addHook('onRequest',async(request,reply)=>{if(failPolicyRead && request.method==='GET' && request.url==='/v2/policies')return reply.code(503).send({error:'INJECTED_OUTAGE'});});
 await api.listen({host:'127.0.0.1',port:4197});
@@ -160,6 +161,31 @@ try {
   await waitFor(`document.body.innerText.includes('Passkey was not created')`);
   await evaluate(`window.testPasskeyReject=false`);await click('Create passkey');
   await waitFor(`document.body.innerText.includes('Passkey created.')`);
+  // Identity and wallet are local adapters; separate API tests use actual native EVM transfers.
+  apiContext.actionFees={treasury:'0x'+'12'.repeat(20),chainId:10143};
+  apiContext.auth.config={chainId:10143,finalityBlocks:5};
+  owners[0].principalStatus='verified';
+  let feeHead=102n;
+  const feeBlock='0x'+'34'.repeat(32);
+  apiContext.rpc.getChainId=async()=>10143;
+  apiContext.rpc.getBlockNumber=async()=>feeHead;
+  apiContext.rpc.getBlock=async()=>({hash:feeBlock});
+  apiContext.rpc.getTransactionReceipt=async()=>({status:'success',blockNumber:100n,blockHash:feeBlock});
+  apiContext.rpc.getTransaction=async()=>{const row=(await database.query('SELECT * FROM pact_action_payments WHERE owner_id=$1 ORDER BY created_at DESC LIMIT 1',[owners[0].id])).rows[0];return {from:row.payer,to:row.treasury,value:BigInt(row.amount_wei),input:row.tx_data,blockHash:feeBlock};};
+  await evaluate(`window.testFeeWallet=${JSON.stringify(owners[0].principalAddress)}`);
+  await click('Agents');await input('Agent name','Browser paid agent');await click('Review agent');await click('Confirm change');
+  await waitFor(`document.querySelector('[aria-label="Pay action fee"]')`);
+  assert.ok(await evaluate(`document.querySelector('[aria-label="Pay action fee"]').innerText.includes('5 MON')`));
+  await click('Cancel');
+  assert.equal(await evaluate(`window.testFeeTransactions??0`),0);
+  await click('Review agent');await click('Confirm change');await click('Pay 5 MON');
+  await waitFor(`document.body.innerText.includes('Transaction submitted.')`);
+  await click('Verify payment & finish');await waitFor(`document.body.innerText.includes('Transaction is still confirming')`);
+  feeHead=110n;await click('Verify payment & finish');
+  await waitFor(`!document.querySelector('[aria-label="Pay action fee"]')`);
+  assert.equal(await evaluate(`window.testFeeTransactions`),1,'retry confirms without paying again');
+  assert.equal((await database.query("SELECT count(*)::int AS n FROM pact_connected_agents WHERE owner_id=$1 AND name='Browser paid agent'",[owners[0].id])).rows[0].n,1);
+  await click('Account');await waitFor(`document.body.innerText.includes('Completed')`);
   await click('Sign out');await waitFor(`document.body.innerText.includes(${JSON.stringify(owners[1].principalAddress)})`);
   await click('Agents');await waitFor(`document.body.innerText.includes('Agent name')`);
   assert.equal(await evaluate(`document.body.innerText.includes(${JSON.stringify(name)})`),false);

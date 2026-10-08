@@ -5,6 +5,8 @@ import { encodeFunctionData, zeroAddress } from 'viem';
 import { PactAccountFactoryAbi } from '@pact/abis';
 import { enforceRequestLimit, AuthError, jsonSafe, type Owner } from '@pact/operations';
 import { economicConstraints, endpointPath, grantInput, httpMethod, httpPolicyInput, upstreamOrigin } from '@pact/policies';
+import {connectedAgentInput,integrationKeyInput,paidInsert,consumeActionFee} from './action-fees.js';
+import type {FastifyRequest} from 'fastify';
 import type { ApiContext } from './server.js';
 
 const uuid = z.uuid();
@@ -148,16 +150,15 @@ export function registerControlPlaneRoutes(app: FastifyInstance, ctx: ApiContext
       page.at(-1)?.id ?? null : null };
   });
 
-  const agentInput = z.object({ name: label, environment: z.enum(['development','staging','production']),
-    description: z.string().max(1000).default('') }).strict();
+  const agentInput = connectedAgentInput;
   app.post('/v2/agents', async request => {
     const owner = await ownerId(request.headers.authorization, ctx);
     const input = agentInput.parse(request.body);
     const id = randomUUID();
-    const saved = await ctx.database.query(
+    const saved = await paidInsert(ctx,owner,request,id,client=>client.query(
       `INSERT INTO pact_connected_agents(id,owner_id,name,environment,description)
        VALUES($1,$2,$3,$4,$5) RETURNING *`,
-      [id, owner.id, input.name, input.environment, input.description]);
+      [id, owner.id, input.name, input.environment, input.description]));
     await audit(ctx, owner, 'agent.created', { agentId: id, environment: input.environment });
     return jsonSafe(saved.rows[0]);
   });
@@ -191,14 +192,14 @@ export function registerControlPlaneRoutes(app: FastifyInstance, ctx: ApiContext
     const input = grantInput.parse(request.body);
     await getOwned(ctx, 'pact_connected_agents', input.agentId, owner);
     const id = randomUUID();
-    const result = await ctx.database.query(
+    const result = await paidInsert(ctx,owner,request,id,client=>client.query(
       `INSERT INTO pact_authority_grants
        (id,owner_id,agent_id,principal_address,name,resource_origins,actions,destination_origins,
         currency,per_action_limit_minor,aggregate_limit_minor,approval_threshold_minor,starts_at,expires_at,allowed_recipients)
        VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15) RETURNING *`,
       [id, owner.id, input.agentId, principal.toLowerCase(), input.name, input.resourceOrigins,
         input.actions, input.destinationOrigins, input.currency, input.perActionLimitMinor,
-        input.aggregateLimitMinor, input.approvalThresholdMinor, input.startsAt, input.expiresAt,input.allowedRecipients]);
+        input.aggregateLimitMinor, input.approvalThresholdMinor, input.startsAt, input.expiresAt,input.allowedRecipients]));
     await audit(ctx, owner, 'grant.created', { grantId: id, agentId: input.agentId,
       principal, bounds: input, kind: 'offchain_http_only' });
     return jsonSafe({ ...result.rows[0] as object, authorityType: 'offchain_http_only' });
@@ -332,9 +333,9 @@ export function registerControlPlaneRoutes(app: FastifyInstance, ctx: ApiContext
     const input = httpPolicyInput.parse(request.body);
     await getOwned(ctx, 'pact_connected_agents', input.agentId, owner);
     const id = randomUUID();
-    const rows = await ctx.database.query(
+    const rows = await paidInsert(ctx,owner,request,id,client=>client.query(
       `INSERT INTO pact_http_policies(id,owner_id,agent_id,name,rules) VALUES($1,$2,$3,$4,$5) RETURNING *`,
-      [id, owner.id, input.agentId, input.name, JSON.stringify(input.rules)]);
+      [id, owner.id, input.agentId, input.name, JSON.stringify(input.rules)]));
     await audit(ctx, owner, 'policy.created', { policyId: id, rules: input.rules });
     return jsonSafe(rows.rows[0]);
   });
@@ -617,7 +618,7 @@ export function registerControlPlaneRoutes(app: FastifyInstance, ctx: ApiContext
   });
 
   const issueKey = async (owner: Owner, agentId: string, input: { name: string; scopes: string[];
-    expiresAt: string }, rotatedFrom: string | null = null) => {
+    expiresAt: string }, rotatedFrom: string | null = null, paymentRequest?:FastifyRequest) => {
     const agent = await getOwned(ctx, 'pact_connected_agents', agentId, owner);
     if (agent.status !== 'active') fail('AGENT_DISABLED', 409);
     const expires = new Date(input.expiresAt);
@@ -628,6 +629,7 @@ export function registerControlPlaneRoutes(app: FastifyInstance, ctx: ApiContext
     const client = await ctx.database.connect();
     try {
       await client.query('BEGIN');
+      if(paymentRequest)await consumeActionFee(client,ctx,owner,paymentRequest,id);
       if (rotatedFrom) {
         const revoked = await client.query(
           `UPDATE pact_integration_keys SET revoked_at=now()
@@ -651,9 +653,8 @@ export function registerControlPlaneRoutes(app: FastifyInstance, ctx: ApiContext
   };
   app.post('/v2/agents/:id/keys', async request => {
     const owner = await ownerId(request.headers.authorization, ctx);
-    const input = z.object({ name: label, scopes: keyScopes,
-      expiresAt: z.iso.datetime({ offset: true }) }).strict().parse(request.body);
-    return issueKey(owner, (request.params as { id: string }).id, input);
+    const input = integrationKeyInput.parse(request.body);
+    return issueKey(owner, (request.params as { id: string }).id, input,null,request);
   });
   app.get('/v2/agents/:id/keys', async request => {
     const owner = await ownerId(request.headers.authorization, ctx);

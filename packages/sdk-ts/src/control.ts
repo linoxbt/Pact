@@ -12,12 +12,13 @@ export class PactControlClient {
   }
 
   async request<T = unknown>(method: 'GET'|'POST'|'PUT'|'PATCH'|'DELETE', path: string,
-    body?: unknown): Promise<T> {
+    body?: unknown, paymentId?: string): Promise<T> {
     if (!/^\/v2\/[A-Za-z0-9/_?=&.%+-]+$/.test(path) || path.includes('..') || path.includes('//'))
       throw new Error('Invalid control API path');
+    if(paymentId && !/^[0-9a-f-]{36}$/i.test(paymentId)) throw Error('Invalid payment ID');
     const response = await this.fetcher(new URL(path, this.origin), {
       method, redirect: 'error', signal: AbortSignal.timeout(15_000),
-      headers: { Authorization: `Bearer ${this.accessToken}`,
+      headers: { ...(paymentId ? {'x-pact-payment':paymentId} : {}), Authorization: `Bearer ${this.accessToken}`,
         ...(body === undefined ? {} : { 'Content-Type': 'application/json' }) },
       ...(body === undefined ? {} : { body: JSON.stringify(body) }),
     });
@@ -28,19 +29,23 @@ export class PactControlClient {
     return data as T;
   }
 
+  feeConfig() { return this.request('GET','/v2/fees/config'); }
+  payments() { return this.request('GET','/v2/fees/payments'); }
+  preparePayment(path:string, body:unknown) { return this.request('POST','/v2/fees/prepare',{path,body}); }
+  confirmPayment(id:string,txHash:string) { return this.request('POST',`/v2/fees/payments/${id}/confirm`,{txHash}); }
   account() { return this.request('GET', '/v2/account'); }
   agents(cursor?: string) { return this.request('GET', `/v2/agents${cursor ? `?cursor=${encodeURIComponent(cursor)}` : ''}`); }
-  createAgent(input: { name: string; environment: 'development'|'staging'|'production'; description?: string }) {
-    return this.request('POST', '/v2/agents', input); }
+  createAgent(input: { name: string; environment: 'development'|'staging'|'production'; description?: string }, paymentId?:string) {
+    return this.request('POST', '/v2/agents', input,paymentId); }
   updateAgent(id: string, patch: { name?: string; description?: string; status?: 'active'|'disabled' }) {
     return this.request('PATCH', `/v2/agents/${id}`, patch); }
   grants(cursor?: string) { return this.request('GET', `/v2/grants${cursor ? `?cursor=${encodeURIComponent(cursor)}` : ''}`); }
-  createGrant(input: Record<string, unknown>) { return this.request('POST', '/v2/grants', input); }
+  createGrant(input: Record<string, unknown>,paymentId?:string) { return this.request('POST', '/v2/grants', input,paymentId); }
   narrowGrant(id: string, patch: Record<string, unknown>) {
     return this.request('PATCH', `/v2/grants/${id}`, patch); }
   migrateGrant(id: string) { return this.request('POST', `/v2/grants/${id}/migrate`, {}); }
   policies(cursor?: string) { return this.request('GET', `/v2/policies${cursor ? `?cursor=${encodeURIComponent(cursor)}` : ''}`); }
-  createPolicy(input: Record<string, unknown>) { return this.request('POST', '/v2/policies', input); }
+  createPolicy(input: Record<string, unknown>,paymentId?:string) { return this.request('POST', '/v2/policies', input,paymentId); }
   updatePolicy(id: string, patch: Record<string, unknown>) {
     return this.request('PATCH', `/v2/policies/${id}`, patch); }
   services(cursor?: string) { return this.request('GET', `/v2/services${cursor ? `?cursor=${encodeURIComponent(cursor)}` : ''}`); }
@@ -58,8 +63,8 @@ export class PactControlClient {
   importOpenApi(serviceId: string, input: Record<string, unknown>) {
     return this.request('POST', `/v2/services/${serviceId}/import`, input); }
   keys(agentId: string, cursor?:string) { return this.request('GET', `/v2/agents/${agentId}/keys${cursor ? `?cursor=${encodeURIComponent(cursor)}` : ''}`); }
-  issueKey(agentId: string, input: { name: string; scopes: ('proxy.read'|'proxy.write')[]; expiresAt: string }) {
-    return this.request('POST', `/v2/agents/${agentId}/keys`, input); }
+  issueKey(agentId: string, input: { name: string; scopes: ('proxy.read'|'proxy.write')[]; expiresAt: string },paymentId?:string) {
+    return this.request('POST', `/v2/agents/${agentId}/keys`, input,paymentId); }
   rotateKey(agentId: string, keyId: string) {
     return this.request('POST', `/v2/agents/${agentId}/keys/${keyId}/rotate`, {}); }
   revokeKey(agentId: string, keyId: string) {

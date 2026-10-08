@@ -28,12 +28,16 @@ class PactControlClient:
         self.timeout = timeout
         self.transport = transport
 
-    def request(self, method: str, path: str, body: dict[str, Any] | None = None) -> dict[str, Any]:
+    def request(self, method: str, path: str, body: dict[str, Any] | None = None, payment_id: str | None = None) -> dict[str, Any]:
         if method not in {"GET", "POST", "PUT", "PATCH", "DELETE"} or not re.fullmatch(
                 r"/v2/[A-Za-z0-9/_?=&.%+-]+", path) or ".." in path or "//" in path:
             raise ValueError("invalid control API route")
         payload = None if body is None else json.dumps(body, separators=(",", ":")).encode()
         headers = {"Authorization": f"Bearer {self.access_token}", "Accept": "application/json"}
+        if payment_id:
+            if not re.fullmatch(r"[0-9a-fA-F-]{36}", payment_id):
+                raise ValueError("invalid payment ID")
+            headers["X-Pact-Payment"] = payment_id
         if payload is not None:
             headers["Content-Type"] = "application/json"
         request = Request(self.base_url + path, data=payload, headers=headers, method=method)
@@ -50,24 +54,30 @@ class PactControlClient:
                 code = "HTTP_ERROR"
             raise PactApiError(error.code, code) from error
 
+    def fee_config(self): return self.request("GET", "/v2/fees/config")
+    def payments(self): return self.request("GET", "/v2/fees/payments")
+    def prepare_payment(self, path: str, body: dict[str, Any]):
+        return self.request("POST", "/v2/fees/prepare", {"path": path, "body": body})
+    def confirm_payment(self, payment_id: str, tx_hash: str):
+        return self.request("POST", f"/v2/fees/payments/{payment_id}/confirm", {"txHash": tx_hash})
     def account(self): return self.request("GET", "/v2/account")
     def agents(self, cursor: str | None = None):
         return self.request("GET", "/v2/agents" + ("?" + urlencode({"cursor": cursor}) if cursor else ""))
-    def create_agent(self, name: str, environment: str, description: str = ""):
+    def create_agent(self, name: str, environment: str, description: str = "", payment_id: str | None = None):
         return self.request("POST", "/v2/agents", {"name": name, "environment": environment,
-                                                  "description": description})
+                                                  "description": description}, payment_id)
     def update_agent(self, agent_id: str, patch: dict[str, Any]):
         return self.request("PATCH", f"/v2/agents/{agent_id}", patch)
     def grants(self, cursor: str | None = None):
         return self.request("GET", "/v2/grants" + ("?" + urlencode({"cursor": cursor}) if cursor else ""))
-    def create_grant(self, grant: dict[str, Any]): return self.request("POST", "/v2/grants", grant)
+    def create_grant(self, grant: dict[str, Any], payment_id: str | None = None): return self.request("POST", "/v2/grants", grant, payment_id)
     def narrow_grant(self, grant_id: str, patch: dict[str, Any]):
         return self.request("PATCH", f"/v2/grants/{grant_id}", patch)
     def migrate_grant(self, grant_id: str):
         return self.request("POST", f"/v2/grants/{grant_id}/migrate", {})
     def policies(self, cursor: str | None = None):
         return self.request("GET", "/v2/policies" + ("?" + urlencode({"cursor": cursor}) if cursor else ""))
-    def create_policy(self, policy: dict[str, Any]): return self.request("POST", "/v2/policies", policy)
+    def create_policy(self, policy: dict[str, Any], payment_id: str | None = None): return self.request("POST", "/v2/policies", policy, payment_id)
     def update_policy(self, policy_id: str, patch: dict[str, Any]):
         return self.request("PATCH", f"/v2/policies/{policy_id}", patch)
     def services(self, cursor: str | None = None):
@@ -91,9 +101,9 @@ class PactControlClient:
         return self.request("POST", f"/v2/services/{service_id}/import", options)
     def keys(self, agent_id: str, cursor: str | None = None):
         return self.request("GET", f"/v2/agents/{agent_id}/keys" + ("?" + urlencode({"cursor": cursor}) if cursor else ""))
-    def issue_key(self, agent_id: str, name: str, scopes: list[str], expires_at: str):
+    def issue_key(self, agent_id: str, name: str, scopes: list[str], expires_at: str, payment_id: str | None = None):
         return self.request("POST", f"/v2/agents/{agent_id}/keys",
-                            {"name": name, "scopes": scopes, "expiresAt": expires_at})
+                            {"name": name, "scopes": scopes, "expiresAt": expires_at}, payment_id)
     def rotate_key(self, agent_id: str, key_id: str):
         return self.request("POST", f"/v2/agents/{agent_id}/keys/{key_id}/rotate", {})
     def revoke_key(self, agent_id: str, key_id: str):
