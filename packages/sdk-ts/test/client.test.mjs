@@ -2,6 +2,13 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { PactClient, PactHttpClient } from '../dist/index.js';
 
+test('proxy preserves a policy denial reason without an error field',async()=>{
+  const client=new PactHttpClient('https://pact.example','pat_test',async()=>
+    Response.json({decision:'denied',reason:'RULE_DENIED'},{status:403}));
+  await assert.rejects(()=>client.proxy('00000000-0000-4000-8000-000000000001',
+    '00000000-0000-4000-8000-000000000002','GET','/health'),/RULE_DENIED/);
+});
+
 const addresses = {
   registry: '0x0000000000000000000000000000000000000001',
   ledger: '0x0000000000000000000000000000000000000002',

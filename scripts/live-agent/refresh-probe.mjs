@@ -1,0 +1,10 @@
+import{control,load,save}from './client.mjs';
+const r=load('resources.json'),old=r.probe;
+const probe=await control('/v2/verification/probes',{});
+const rules=r.policy.rules.map(rule=>({...rule,paths:rule.paths.map(path=>path.replace(old.path,probe.path)),...(rule.id==='model'?{maxRequests:80}:{})}));
+await control(`/v2/policies/${r.policy.id}`,{rules},'PATCH');
+await control(`/v2/services/${r.service.id}/secret`,{secret:probe.secret},'PUT');
+for(const endpoint of(await control('/v2/endpoints')).endpoints.filter(e=>e.service_id===r.service.id))await control(`/v2/endpoints/${endpoint.id}`,{status:'disabled'},'PATCH');
+for(const [method,operation]of[['GET','read'],['GET','forbidden'],['POST','write']])await control('/v2/endpoints',{serviceId:r.service.id,grantId:r.grant.id,policyId:r.policy.id,method,pathPattern:probe.path+'/'+operation,currency:'USD',responseFields:['ok','method']});
+await control(`/v2/verification/probes/${old.id}`,undefined,'DELETE');
+r.toolBase=r.toolBase.replace(old.path,probe.path);r.probe=probe;r.policy.rules=rules;save('resources.json',r);console.log('Refreshed thirty-minute protected probe');

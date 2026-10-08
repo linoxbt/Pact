@@ -1,0 +1,1196 @@
+{
+  "date": "2026-10-08",
+  "scope": "Real dedicated test account; Railway agent; Monad testnet only",
+  "reports": {
+    "provision": {
+      "startedAt": "2026-10-08T10:03:15.828Z",
+      "checks": [
+        {
+          "name": "Real Privy account receives its own principal without a wallet onboarding step",
+          "status": "passed"
+        },
+        {
+          "name": "Grant automatically uses account principal",
+          "status": "passed"
+        },
+        {
+          "name": "Agent, grant, policy, endpoints, encrypted upstream credentials and scoped key created through public API",
+          "status": "passed"
+        }
+      ]
+    },
+    "http": {
+      "startedAt": "2026-10-08T12:54:40.327Z",
+      "railwayActor": {
+        "status": "ready",
+        "actor": "0x17dEf9FcC139Cf0EeD9781F08c190A4e824C5025",
+        "chainId": 10143,
+        "deployment": "279eac6a-2d37-4051-abe1-c181381d4206",
+        "expiresAt": "2026-10-10T10:03:07.733Z"
+      },
+      "agentId": "b167cdf0-1183-497b-a3f8-4f16f1133bc0",
+      "checks": [
+        {
+          "name": "Railway deployment health and distinct operational identity",
+          "status": "passed",
+          "evidence": {
+            "status": "ready",
+            "actor": "0x17dEf9FcC139Cf0EeD9781F08c190A4e824C5025",
+            "chainId": 10143,
+            "deployment": "279eac6a-2d37-4051-abe1-c181381d4206",
+            "expiresAt": "2026-10-10T10:03:07.733Z"
+          }
+        },
+        {
+          "name": "Real model tool use: Check the upstream health.",
+          "status": "passed",
+          "evidence": {
+            "turns": [
+              {
+                "model": "@cf/meta/llama-3.1-8b-instruct-fp8",
+                "usage": {
+                  "prompt_tokens": 112,
+                  "completion_tokens": 20,
+                  "total_tokens": 132,
+                  "prompt_tokens_details": {
+                    "cached_tokens": 0
+                  },
+                  "neurons": 2.065741039812565
+                },
+                "requestId": "22d89206-1cb9-4117-8710-07e3863d57a4",
+                "action": {
+                  "method": "GET",
+                  "path": "/health",
+                  "reason": "Check upstream health",
+                  "done": false
+                }
+              },
+              {
+                "model": "@cf/meta/llama-3.1-8b-instruct-fp8",
+                "usage": {
+                  "prompt_tokens": 137,
+                  "completion_tokens": 19,
+                  "total_tokens": 156,
+                  "prompt_tokens_details": {
+                    "cached_tokens": 0
+                  },
+                  "neurons": 2.3840732173994184
+                },
+                "requestId": "731608ca-51f0-44c8-9ce0-792c5a2d48d4",
+                "action": {
+                  "done": true,
+                  "summary": "Upstream health check successful with status code 200"
+                }
+              }
+            ],
+            "observations": [
+              {
+                "method": "GET",
+                "path": "/health",
+                "status": 200,
+                "headers": {
+                  "x-pact-request-id": "03f223eb-f3d0-4d8f-b3f7-eec50f0c810c"
+                },
+                "body": "{}"
+              }
+            ],
+            "actor": "0x17dEf9FcC139Cf0EeD9781F08c190A4e824C5025",
+            "chainId": 10143
+          }
+        },
+        {
+          "name": "Real model tool use: Test a forbidden delete of the health endpoint.",
+          "status": "passed",
+          "evidence": {
+            "turns": [
+              {
+                "model": "@cf/meta/llama-3.1-8b-instruct-fp8",
+                "usage": {
+                  "prompt_tokens": 116,
+                  "completion_tokens": 25,
+                  "total_tokens": 141,
+                  "prompt_tokens_details": {
+                    "cached_tokens": 0
+                  },
+                  "neurons": 2.251494551077485
+                },
+                "requestId": "566c0c0f-c660-4984-8ae9-7cd2736bacb3",
+                "action": {
+                  "method": "DELETE",
+                  "path": "/health",
+                  "reason": "Test a forbidden delete of the health endpoint.",
+                  "done": false
+                }
+              },
+              {
+                "model": "@cf/meta/llama-3.1-8b-instruct-fp8",
+                "usage": {
+                  "prompt_tokens": 155,
+                  "completion_tokens": 33,
+                  "total_tokens": 188,
+                  "prompt_tokens_details": {
+                    "cached_tokens": 0
+                  },
+                  "neurons": 2.9978762110695243
+                },
+                "requestId": "5289aaac-c675-476f-95c0-d4abae5f226e",
+                "action": {
+                  "done": true,
+                  "summary": "DELETE request to /health endpoint was denied with a 403 status code and an error message indicating the method was denied."
+                }
+              }
+            ],
+            "observations": [
+              {
+                "method": "DELETE",
+                "path": "/health",
+                "status": 403,
+                "headers": {
+                  "x-pact-request-id": null
+                },
+                "body": "{\"status\":403,\"error\":\"ENDPOINT_METHOD_DENIED\",\"requestId\":\"aa847615-f248-4c42-8d6c-0a724ede20d9\"}"
+              }
+            ],
+            "actor": "0x17dEf9FcC139Cf0EeD9781F08c190A4e824C5025",
+            "chainId": 10143
+          }
+        },
+        {
+          "name": "Real model tool use: Request an update of the test upstream.",
+          "status": "passed",
+          "evidence": {
+            "turns": [
+              {
+                "model": "@cf/meta/llama-3.1-8b-instruct-fp8",
+                "usage": {
+                  "prompt_tokens": 115,
+                  "completion_tokens": 20,
+                  "total_tokens": 135,
+                  "prompt_tokens_details": {
+                    "cached_tokens": 0
+                  },
+                  "neurons": 2.1070762583985925
+                },
+                "requestId": "0cd8dcd2-2822-4b02-9a49-01a45787fab3",
+                "action": {
+                  "method": "POST",
+                  "path": "/write",
+                  "reason": "update test upstream",
+                  "done": false
+                }
+              },
+              {
+                "model": "@cf/meta/llama-3.1-8b-instruct-fp8",
+                "usage": {
+                  "prompt_tokens": 186,
+                  "completion_tokens": 24,
+                  "total_tokens": 210,
+                  "prompt_tokens_details": {
+                    "cached_tokens": 0
+                  },
+                  "neurons": 3.189855007454753
+                },
+                "requestId": "3a7bd982-f794-4121-b31f-7977aab14e20",
+                "action": {
+                  "done": true,
+                  "summary": "Request for test upstream update is pending human approval."
+                }
+              }
+            ],
+            "observations": [
+              {
+                "method": "POST",
+                "path": "/write",
+                "status": 202,
+                "headers": {
+                  "x-pact-request-id": null
+                },
+                "body": "{\"requestId\":\"eee92842-d579-4d3c-ab87-2a932dabb6b7\",\"decision\":\"pending_approval\",\"reason\":\"APPROVAL_REQUIRED\",\"matchedRule\":\"approval\",\"approvalId\":\"ec0bbde8-501e-42c3-8be3-f881a8a17720\"}"
+              }
+            ],
+            "actor": "0x17dEf9FcC139Cf0EeD9781F08c190A4e824C5025",
+            "chainId": 10143
+          }
+        },
+        {
+          "name": "Complete SDK verification with all gateway calls executed by Railway actor",
+          "status": "passed",
+          "evidence": {
+            "passed": true,
+            "agentId": "07603502-c7a9-43c0-ad03-9561e13ca840",
+            "grantId": "42c9ccdc-8214-436f-b53b-7f57a509c117",
+            "policyId": "f8842109-0776-4f80-904c-9f62f6c4544d",
+            "requestIds": [
+              "c6dee091-8b43-4ceb-bcdb-31be2c46fea1",
+              "d04de566-a822-4ddf-92db-43b914ee47e3",
+              "34047ca6-21d9-422e-bcd3-6f9caa2f97ce",
+              "fda44bc2-5f65-415c-8b9e-ac37ccab6777",
+              "3db0d927-cd4d-4c88-95d2-359ac2befc8e",
+              "03b1d315-03a8-4bbc-a73e-6bb68d728d3b",
+              "f2656b27-cb42-4083-8b68-b7e9a9134b00",
+              "c34cc8c7-52a7-4e6b-bc47-3c449a51a907",
+              "b7db45ee-dd00-468e-90f8-eb5b5630e560",
+              "a5710f24-7f86-4a3a-b8d7-7bad86359741",
+              "f7f3a83b-dcfc-4800-9ed5-7b111f12db5d"
+            ],
+            "steps": [
+              "Created account-owned agent, zero-spend grant, ordered policy, encrypted secret and scoped key",
+              "Allowed GET forwarded with protected credential; sensitive response field redacted",
+              "Policy-denied operation and forbidden method/path never reached upstream",
+              "Pending request withheld until exact test intent was inspected and approved",
+              "Key rotation invalidated the old credential and activated the replacement",
+              "Valid API key could not bypass revoked grant",
+              "Revoked key rejected; upstream received exactly three authorized requests",
+              "Live activity contains each request, policy decisions and approval; secrets absent"
+            ],
+            "error": null,
+            "cleanupFailures": [],
+            "evidence": "Live HTTP gateway execution; not a model run or onchain receipt",
+            "completedAt": "2026-10-08T12:54:58.784Z"
+          }
+        },
+        {
+          "name": "Read secret metadata and key details never return stored secrets",
+          "status": "passed",
+          "evidence": {
+            "keyId": "0f324b3c-5b78-4578-9de7-b1c845b65be9",
+            "lastUsed": "2026-10-08T12:54:08.761Z"
+          }
+        },
+        {
+          "name": "Endpoint disable prevents upstream execution",
+          "status": "passed",
+          "evidence": {
+            "status": 403,
+            "requestId": null
+          }
+        },
+        {
+          "name": "Service disable prevents upstream execution",
+          "status": "passed",
+          "evidence": {
+            "status": 403,
+            "requestId": null
+          }
+        },
+        {
+          "name": "Agent disable prevents upstream execution",
+          "status": "passed",
+          "evidence": {
+            "status": 401,
+            "requestId": null
+          }
+        },
+        {
+          "name": "Rate limit boundary",
+          "status": "passed",
+          "evidence": [
+            {
+              "status": 200,
+              "requestId": "cdd046c8-88cd-4cb8-a7db-2484a901151e"
+            },
+            {
+              "status": 403,
+              "reason": "RATE_LIMIT_EXCEEDED",
+              "requestId": null
+            }
+          ]
+        },
+        {
+          "name": "UTC time window boundary",
+          "status": "passed",
+          "evidence": [
+            {
+              "status": 403,
+              "reason": "OUTSIDE_TIME_WINDOW",
+              "requestId": null
+            }
+          ]
+        },
+        {
+          "name": "OpenAPI preview and import create real endpoint records",
+          "status": "passed",
+          "evidence": {
+            "endpointId": "c530c2c2-3f0a-4a7f-96af-d7994ec7fbe6"
+          }
+        },
+        {
+          "name": "Key expiry enforced",
+          "status": "passed",
+          "evidence": {
+            "status": 401
+          }
+        },
+        {
+          "name": "Owner-scoped dashboard, activity filters, decision detail and audit trail",
+          "status": "passed",
+          "evidence": {
+            "eventId": "e6257a5a-7b83-47fc-b401-0ce538b5d7fe",
+            "detail": {
+              "id": "e6257a5a-7b83-47fc-b401-0ce538b5d7fe",
+              "owner_id": "918b7af6-7ed2-4c70-ac6c-ace3f593a9aa",
+              "agent_id": "b167cdf0-1183-497b-a3f8-4f16f1133bc0",
+              "service_id": null,
+              "endpoint_id": null,
+              "grant_id": null,
+              "policy_id": null,
+              "key_id": "921ad6a4-9085-4f28-a3aa-b7c606544857",
+              "approval_id": null,
+              "method": "GET",
+              "route": "[credential boundary]",
+              "decision": "denied",
+              "matched_rule": "credential",
+              "reason": "INTEGRATION_KEY_DENIED",
+              "trace": [
+                {
+                  "name": "Integration key scope and validity",
+                  "reason": "INTEGRATION_KEY_DENIED",
+                  "result": "deny",
+                  "ruleId": "credential"
+                }
+              ],
+              "upstream_status": null,
+              "latency_ms": 2,
+              "created_at": "2026-10-08T12:55:08.247Z",
+              "execution_state": null,
+              "disclosure": "private_gateway_log_not_onchain_receipt"
+            },
+            "auditEvents": 30
+          }
+        }
+      ],
+      "modelRuns": [
+        {
+          "turns": [
+            {
+              "model": "@cf/meta/llama-3.1-8b-instruct-fp8",
+              "usage": {
+                "prompt_tokens": 112,
+                "completion_tokens": 20,
+                "total_tokens": 132,
+                "prompt_tokens_details": {
+                  "cached_tokens": 0
+                },
+                "neurons": 2.065741039812565
+              },
+              "requestId": "22d89206-1cb9-4117-8710-07e3863d57a4",
+              "action": {
+                "method": "GET",
+                "path": "/health",
+                "reason": "Check upstream health",
+                "done": false
+              }
+            },
+            {
+              "model": "@cf/meta/llama-3.1-8b-instruct-fp8",
+              "usage": {
+                "prompt_tokens": 137,
+                "completion_tokens": 19,
+                "total_tokens": 156,
+                "prompt_tokens_details": {
+                  "cached_tokens": 0
+                },
+                "neurons": 2.3840732173994184
+              },
+              "requestId": "731608ca-51f0-44c8-9ce0-792c5a2d48d4",
+              "action": {
+                "done": true,
+                "summary": "Upstream health check successful with status code 200"
+              }
+            }
+          ],
+          "observations": [
+            {
+              "method": "GET",
+              "path": "/health",
+              "status": 200,
+              "headers": {
+                "x-pact-request-id": "03f223eb-f3d0-4d8f-b3f7-eec50f0c810c"
+              },
+              "body": "{}"
+            }
+          ],
+          "actor": "0x17dEf9FcC139Cf0EeD9781F08c190A4e824C5025",
+          "chainId": 10143
+        },
+        {
+          "turns": [
+            {
+              "model": "@cf/meta/llama-3.1-8b-instruct-fp8",
+              "usage": {
+                "prompt_tokens": 116,
+                "completion_tokens": 25,
+                "total_tokens": 141,
+                "prompt_tokens_details": {
+                  "cached_tokens": 0
+                },
+                "neurons": 2.251494551077485
+              },
+              "requestId": "566c0c0f-c660-4984-8ae9-7cd2736bacb3",
+              "action": {
+                "method": "DELETE",
+                "path": "/health",
+                "reason": "Test a forbidden delete of the health endpoint.",
+                "done": false
+              }
+            },
+            {
+              "model": "@cf/meta/llama-3.1-8b-instruct-fp8",
+              "usage": {
+                "prompt_tokens": 155,
+                "completion_tokens": 33,
+                "total_tokens": 188,
+                "prompt_tokens_details": {
+                  "cached_tokens": 0
+                },
+                "neurons": 2.9978762110695243
+              },
+              "requestId": "5289aaac-c675-476f-95c0-d4abae5f226e",
+              "action": {
+                "done": true,
+                "summary": "DELETE request to /health endpoint was denied with a 403 status code and an error message indicating the method was denied."
+              }
+            }
+          ],
+          "observations": [
+            {
+              "method": "DELETE",
+              "path": "/health",
+              "status": 403,
+              "headers": {
+                "x-pact-request-id": null
+              },
+              "body": "{\"status\":403,\"error\":\"ENDPOINT_METHOD_DENIED\",\"requestId\":\"aa847615-f248-4c42-8d6c-0a724ede20d9\"}"
+            }
+          ],
+          "actor": "0x17dEf9FcC139Cf0EeD9781F08c190A4e824C5025",
+          "chainId": 10143
+        },
+        {
+          "turns": [
+            {
+              "model": "@cf/meta/llama-3.1-8b-instruct-fp8",
+              "usage": {
+                "prompt_tokens": 115,
+                "completion_tokens": 20,
+                "total_tokens": 135,
+                "prompt_tokens_details": {
+                  "cached_tokens": 0
+                },
+                "neurons": 2.1070762583985925
+              },
+              "requestId": "0cd8dcd2-2822-4b02-9a49-01a45787fab3",
+              "action": {
+                "method": "POST",
+                "path": "/write",
+                "reason": "update test upstream",
+                "done": false
+              }
+            },
+            {
+              "model": "@cf/meta/llama-3.1-8b-instruct-fp8",
+              "usage": {
+                "prompt_tokens": 186,
+                "completion_tokens": 24,
+                "total_tokens": 210,
+                "prompt_tokens_details": {
+                  "cached_tokens": 0
+                },
+                "neurons": 3.189855007454753
+              },
+              "requestId": "3a7bd982-f794-4121-b31f-7977aab14e20",
+              "action": {
+                "done": true,
+                "summary": "Request for test upstream update is pending human approval."
+              }
+            }
+          ],
+          "observations": [
+            {
+              "method": "POST",
+              "path": "/write",
+              "status": 202,
+              "headers": {
+                "x-pact-request-id": null
+              },
+              "body": "{\"requestId\":\"eee92842-d579-4d3c-ab87-2a932dabb6b7\",\"decision\":\"pending_approval\",\"reason\":\"APPROVAL_REQUIRED\",\"matchedRule\":\"approval\",\"approvalId\":\"ec0bbde8-501e-42c3-8be3-f881a8a17720\"}"
+            }
+          ],
+          "actor": "0x17dEf9FcC139Cf0EeD9781F08c190A4e824C5025",
+          "chainId": 10143
+        }
+      ]
+    },
+    "boundaries": {
+      "checks": [
+        {
+          "name": "Dynamic request amount within exact minor-unit budget",
+          "status": "passed",
+          "evidence": {
+            "status": 200,
+            "ok": true,
+            "method": "POST",
+            "requestId": "8a7482a8-8e40-477e-9d31-289d230d247c"
+          }
+        },
+        {
+          "name": "Per-action spending limit",
+          "status": "passed",
+          "evidence": {
+            "status": 403,
+            "requestId": "f4b5c030-3342-41c1-945c-9e8e8f081024",
+            "decision": "denied",
+            "reason": "SPENDING_LIMIT_EXCEEDED",
+            "matchedRule": "grant"
+          }
+        },
+        {
+          "name": "Currency bound",
+          "status": "passed",
+          "evidence": {
+            "status": 403,
+            "requestId": "8e33a084-d999-425f-81f9-42e264b10d07",
+            "decision": "denied",
+            "reason": "REQUEST_CURRENCY_DENIED",
+            "matchedRule": "economics"
+          }
+        },
+        {
+          "name": "Recipient bound",
+          "status": "passed",
+          "evidence": {
+            "status": 403,
+            "requestId": "58cfaedc-4e63-4a23-a4fb-9c39258a70d2",
+            "decision": "denied",
+            "reason": "REQUEST_RECIPIENT_DENIED",
+            "matchedRule": "economics"
+          }
+        },
+        {
+          "name": "Reject floating-point amounts",
+          "status": "passed",
+          "evidence": {
+            "status": 403,
+            "requestId": "89c486d2-f51b-458f-82c2-18dc372e1836",
+            "decision": "denied",
+            "reason": "INVALID_REQUEST_AMOUNT_MINOR",
+            "matchedRule": "economics"
+          }
+        },
+        {
+          "name": "Policy aggregate spending bound",
+          "status": "passed",
+          "evidence": {
+            "status": 403,
+            "requestId": "56fe2d6e-2bd2-4547-ba29-3dcb0202a836",
+            "decision": "denied",
+            "reason": "POLICY_SPENDING_LIMIT_EXCEEDED",
+            "matchedRule": "budget"
+          }
+        },
+        {
+          "name": "Write retry does not duplicate upstream execution",
+          "status": "passed",
+          "evidence": {
+            "second": {
+              "status": 200,
+              "ok": true,
+              "method": "POST",
+              "requestId": "399044c5-d6f0-4441-bc4c-a216bb41ea4b"
+            },
+            "retry": {
+              "status": 409,
+              "error": "REQUEST_ALREADY_DISPATCHED",
+              "requestId": "399044c5-d6f0-4441-bc4c-a216bb41ea4b",
+              "state": "responded"
+            },
+            "upstreamDelta": 1
+          }
+        },
+        {
+          "name": "Exact grant aggregate boundary accepted",
+          "status": "passed",
+          "evidence": {
+            "status": 200,
+            "ok": true,
+            "method": "POST",
+            "requestId": "315297da-cc96-4317-af1e-98cc58b7ffb7"
+          }
+        },
+        {
+          "name": "Grant aggregate budget rejects next request",
+          "status": "passed",
+          "evidence": {
+            "status": 403,
+            "requestId": "79cde38b-a85c-4c9a-bab8-007a1ef4d66a",
+            "decision": "denied",
+            "reason": "SPENDING_LIMIT_EXCEEDED",
+            "matchedRule": "grant"
+          }
+        },
+        {
+          "name": "Grant editing cannot expand existing authority",
+          "status": "passed",
+          "evidence": {
+            "status": 409
+          }
+        },
+        {
+          "name": "Explicit principal migration revokes original and preserves its historic owner",
+          "status": "passed",
+          "evidence": {
+            "oldGrant": "af6db43c-6325-4dda-bacd-c4bd025fa5c7",
+            "migration": {
+              "priorGrantId": "af6db43c-6325-4dda-bacd-c4bd025fa5c7",
+              "grant": {
+                "id": "5f1b5cac-9623-4e07-bf1e-89e8ac6751d9",
+                "owner_id": "918b7af6-7ed2-4c70-ac6c-ace3f593a9aa",
+                "agent_id": "b167cdf0-1183-497b-a3f8-4f16f1133bc0",
+                "principal_address": "0xb2cee603045240187dce7e1f21bca69f63e40cea",
+                "name": "Test inference and protected HTTP authority",
+                "resource_origins": [
+                  "https://pact-api-production-2ab9.up.railway.app",
+                  "https://pact-test-agent-model.alemzdelight.workers.dev"
+                ],
+                "actions": [
+                  "GET",
+                  "POST"
+                ],
+                "destination_origins": [
+                  "https://pact-api-production-2ab9.up.railway.app",
+                  "https://pact-test-agent-model.alemzdelight.workers.dev"
+                ],
+                "currency": "USD",
+                "per_action_limit_minor": "0",
+                "aggregate_limit_minor": "0",
+                "approval_threshold_minor": "0",
+                "starts_at": "2026-10-08T10:02:16.639Z",
+                "expires_at": "2026-10-10T10:03:16.639Z",
+                "status": "active",
+                "version": 1,
+                "created_at": "2026-10-08T12:57:02.479Z",
+                "updated_at": "2026-10-08T12:57:02.479Z",
+                "allowed_recipients": []
+              },
+              "usageRetained": true
+            }
+          }
+        }
+      ]
+    },
+    "chain": {
+      "chainId": 10143,
+      "owner": "0xb2cee603045240187DcE7e1F21bCA69F63e40cea",
+      "agent": "0x17dEf9FcC139Cf0EeD9781F08c190A4e824C5025",
+      "startedAt": "2026-10-08T12:43:32.366Z",
+      "checks": [
+        {
+          "name": "Owner-specific Pact account deployed",
+          "status": "passed",
+          "evidence": {
+            "address": "0x807A24D7D055ea9a732a64896D744f5afE5f80D2"
+          }
+        },
+        {
+          "name": "Onchain owner grant binds agent, token, recipient, ceiling and per-action limit",
+          "status": "passed",
+          "evidence": {
+            "grantId": "1"
+          }
+        },
+        {
+          "name": "Unreserved transfer denied",
+          "status": "passed",
+          "evidence": {
+            "verifiedBy": "eth_call against deployed testnet contracts; no reverting transaction broadcast"
+          }
+        },
+        {
+          "name": "Foreign actor cannot reserve authority",
+          "status": "passed",
+          "evidence": {
+            "verifiedBy": "eth_call against deployed testnet contracts; no reverting transaction broadcast"
+          }
+        },
+        {
+          "name": "Per-action limit enforced onchain",
+          "status": "passed",
+          "evidence": {
+            "verifiedBy": "eth_call against deployed testnet contracts; no reverting transaction broadcast"
+          }
+        },
+        {
+          "name": "Intent reservation replay denied",
+          "status": "passed",
+          "evidence": {
+            "verifiedBy": "eth_call against deployed testnet contracts; no reverting transaction broadcast"
+          }
+        },
+        {
+          "name": "Real transfer settlement and recipient balance",
+          "status": "passed",
+          "evidence": {
+            "amountMinor": "100000",
+            "decimals": 6
+          }
+        },
+        {
+          "name": "Transfer nonce replay denied",
+          "status": "passed",
+          "evidence": {
+            "verifiedBy": "eth_call against deployed testnet contracts; no reverting transaction broadcast"
+          }
+        },
+        {
+          "name": "Above-threshold transfer requires owner signature",
+          "status": "passed",
+          "evidence": {
+            "verifiedBy": "eth_call against deployed testnet contracts; no reverting transaction broadcast"
+          }
+        },
+        {
+          "name": "Exact owner approval permits above-threshold transfer",
+          "status": "passed",
+          "evidence": {
+            "reservationId": "2"
+          }
+        },
+        {
+          "name": "Revoked onchain grant rejects new reservations",
+          "status": "passed",
+          "evidence": {
+            "verifiedBy": "eth_call against deployed testnet contracts; no reverting transaction broadcast"
+          }
+        },
+        {
+          "name": "Public API hides authority without signed disclosure",
+          "status": "passed",
+          "evidence": {
+            "error": "GRANT_NOT_PUBLIC"
+          }
+        }
+      ],
+      "transactions": [
+        {
+          "label": "Create unique Pact account from real API preparation",
+          "hash": "0x4c5eaa4bdb25480242c4160a6cf79c109c1b8d23f4182e9fea0c50edae0e51ee",
+          "status": "success",
+          "block": "69257931",
+          "gasCostWei": "110404902000000000"
+        },
+        {
+          "label": "Deploy six-decimal valueless test token",
+          "hash": "0xd755e53ea632b436ebe6dcf052adcecb337106f740f4691a5c343f4cf1829d51",
+          "status": "success",
+          "block": "69257933",
+          "gasCostWei": "38431356000000000"
+        },
+        {
+          "label": "mint",
+          "hash": "0x5966b9c959810af720ccaada40188aa4425d2fbfdf36a2fd7cd630b42b29dc0c",
+          "status": "success",
+          "block": "69257934",
+          "gasCostWei": "6169980000000000"
+        },
+        {
+          "label": "createRoot",
+          "hash": "0xc73ec4b44d665dc611f91c5dc9458a32b54cf6fc3c2d4d2c0f82c0d91d485a0f",
+          "status": "success",
+          "block": "69257935",
+          "gasCostWei": "28877934000000000"
+        },
+        {
+          "label": "Railway agent reserves transfer capacity",
+          "hash": "0x2e2f4d3af1e9529654cad9797d17523c4a44f7c7c8f0e7de4f5df3a33f3a17b8",
+          "block": "69257939",
+          "actor": "0x17dEf9FcC139Cf0EeD9781F08c190A4e824C5025"
+        },
+        {
+          "label": "Railway agent executes authorized test-token transfer",
+          "hash": "0xe3b1ac37e4e44c1c6e3ac5d9add76f560837ea8b8666d0adafb3c2c0071d7c91",
+          "block": "69257943",
+          "actor": "0x17dEf9FcC139Cf0EeD9781F08c190A4e824C5025"
+        },
+        {
+          "label": "Railway agent reserves approval-sized transfer",
+          "hash": "0x411f149b72f0a33f9ddeef3ea48d1239af6db2592c94d7aa9f3805512eb06d9d",
+          "block": "69257946",
+          "actor": "0x17dEf9FcC139Cf0EeD9781F08c190A4e824C5025"
+        },
+        {
+          "label": "Railway agent executes owner-approved transfer",
+          "hash": "0x8964f5113e6a8e9738c956c290c67beb15b65fecf7681996501d195353145e49",
+          "block": "69257949",
+          "actor": "0x17dEf9FcC139Cf0EeD9781F08c190A4e824C5025"
+        },
+        {
+          "label": "revoke",
+          "hash": "0xdca5ddb3d0f187567b061ef5abafb891fedaea16495c812f55cf05a8c87766b2",
+          "status": "success",
+          "block": "69257951",
+          "gasCostWei": "7286574000000000"
+        }
+      ],
+      "pactAccount": "0x807A24D7D055ea9a732a64896D744f5afE5f80D2",
+      "token": "0xd3480c3a995e158f700e3f669c0134da3eaa2e14",
+      "grantId": "1"
+    },
+    "obligation": {
+      "chainId": 10143,
+      "startedAt": "2026-10-08T12:51:47.367Z",
+      "checks": [
+        {
+          "name": "Railway agent reserves exact signed obligation capacity",
+          "status": "passed",
+          "evidence": {
+            "reservationId": "3"
+          }
+        },
+        {
+          "name": "Mutually signed obligation created",
+          "status": "passed",
+          "evidence": {
+            "obligationId": "1"
+          }
+        },
+        {
+          "name": "Escrow funded with actual six-decimal test tokens",
+          "status": "passed",
+          "evidence": {
+            "amountMinor": "100000"
+          }
+        },
+        {
+          "name": "Provider evidence and distinct verifier verdict recorded",
+          "status": "passed",
+          "evidence": {
+            "evidenceHash": "0x4799fb2887ec24b1090de93a5309dffd3acbd3644d292b1378f0c363f8199fc4"
+          }
+        },
+        {
+          "name": "Settlement paid provider and receipt root independently recomputes",
+          "status": "passed",
+          "evidence": {
+            "root": "0xd0ce1d1252dbcfce9ca06ed64a3bb955549a27b05de03c6744a1ddbde06393c3",
+            "paidMinor": "100000",
+            "registry": "0x29fcfe26e9dad431e7b14d3a826c076c3284d98f"
+          }
+        },
+        {
+          "name": "Public receipt API agrees with canonical chain",
+          "status": "passed",
+          "evidence": {
+            "id": "1",
+            "receipt": {
+              "termsDigest": "0xa32899dafa384363bf9dbb3650d525d18b6e8076171b4434926ba5909379bf0a",
+              "evidenceHash": "0x4799fb2887ec24b1090de93a5309dffd3acbd3644d292b1378f0c363f8199fc4",
+              "verdictHash": "0x3246e7606243bb055b20b46f186858d5336193116479e41938d2d2c7efd3a0a0",
+              "root": "0xd0ce1d1252dbcfce9ca06ed64a3bb955549a27b05de03c6744a1ddbde06393c3",
+              "paid": true
+            },
+            "verification": {
+              "valid": true,
+              "reason": "OK"
+            },
+            "evidenceTrust": "named_verifier_attestation"
+          }
+        }
+      ],
+      "transactions": [
+        {
+          "label": "Fund isolated test role",
+          "hash": "0xaef1ca9f2dc63391266feadffde2c8545bd70e96a20fb2144440f134e79223f4",
+          "status": "success",
+          "gasCostWei": "10200000000000000"
+        },
+        {
+          "label": "createRoot",
+          "hash": "0x46e59cd624e257b04bd00bb2a2a3050d5d39475bfb3294c0a9cbcf482d59ba8b",
+          "status": "success",
+          "gasCostWei": "27545508000000000"
+        },
+        {
+          "label": "Railway agent reserves liability",
+          "hash": "0x6223552e1217059ded781d5b7669ba818b981b70e5d7a2b9b4f37de142acf8c4",
+          "actor": "0x17dEf9FcC139Cf0EeD9781F08c190A4e824C5025"
+        },
+        {
+          "label": "create",
+          "hash": "0xe5af439c77ea2394aefaa8b7eae2b9525dfc4ccc3710d78a76f68d4f9bcbd1b0",
+          "status": "success",
+          "gasCostWei": "40992066000000000"
+        },
+        {
+          "label": "approve",
+          "hash": "0x19c377b58c8b99e11ca567b706c0668123aa8cd5f49595a09372d411b22e7ae5",
+          "status": "success",
+          "gasCostWei": "6152436000000000"
+        },
+        {
+          "label": "fund",
+          "hash": "0x93f33f03c44f1f508c4aaf1374d3ae9bdff5ffaefdd11288162714cb012211a2",
+          "status": "success",
+          "gasCostWei": "22924908000000000"
+        },
+        {
+          "label": "submitEvidence",
+          "hash": "0xa0c63fdc2870673d6de0569ddad3ddd1283de7b41e6e4250f9a1525249aaecf0",
+          "status": "success",
+          "gasCostWei": "6501990000000000"
+        },
+        {
+          "label": "verify",
+          "hash": "0xf444fbc610ab53f3d69a1b4cf3741d1de1efdee855ea0ef53e3dc2dd93677986",
+          "status": "success",
+          "gasCostWei": "6613680000000000"
+        },
+        {
+          "label": "Permissionless obligation finalization",
+          "hash": "0x9c29334fe133e925c38b931fa6972e65b33fd8af631981596d5ac8c0942bc380",
+          "status": "success"
+        },
+        {
+          "label": "Revoke completed obligation authority",
+          "hash": "0xee81adc9e3b364dec2c225840f1fedb5632123e24b54ffe085e795040e2161e9",
+          "status": "success"
+        }
+      ],
+      "obligationId": "1",
+      "grantId": "2"
+    },
+    "clients": {
+      "checks": [
+        {
+          "name": "Real MCP stdio discovery, authority, allowed and denied proxy tools",
+          "status": "passed",
+          "evidence": {
+            "tools": [
+              "pact_http_authority",
+              "pact_proxy_request"
+            ],
+            "allowed": {
+              "content": [
+                {
+                  "type": "text",
+                  "text": "{\"ok\":true,\"method\":\"GET\"}"
+                }
+              ]
+            },
+            "denied": {
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Pact proxy 403: RULE_DENIED"
+                }
+              ],
+              "isError": true
+            }
+          }
+        },
+        {
+          "name": "Real Python SDK allowed and denied gateway calls",
+          "status": "passed"
+        }
+      ]
+    },
+    "fixes": {
+      "checks": [
+        {
+          "name": "Live PATCH preserves response disclosure fields",
+          "status": "passed",
+          "evidence": {
+            "endpointId": "8a43df24-686d-4dbd-a8bf-102795bd2093"
+          }
+        },
+        {
+          "name": "Live duplicate OpenAPI import returns conflict without partial mutation",
+          "status": "passed",
+          "evidence": {
+            "error": "ENDPOINT_ALREADY_REGISTERED"
+          }
+        },
+        {
+          "name": "Live account exposes verified individual principal, deployed account and audited history",
+          "status": "passed",
+          "evidence": {
+            "account": {
+              "id": "918b7af6-7ed2-4c70-ac6c-ace3f593a9aa",
+              "principalAddress": "0xb2cee603045240187dce7e1f21bca69f63e40cea",
+              "verificationStatus": "verified",
+              "onchainAccount": "0x807A24D7D055ea9a732a64896D744f5afE5f80D2",
+              "onchainStatus": "deployed",
+              "note": "Gateway grants are account-owned. Onchain spending requires a separately authorized transaction."
+            },
+            "history": {
+              "changes": [
+                {
+                  "previous_address": "0xaf0c4aeba51b101ed5402f59ab0c0a73beeaaf5f",
+                  "new_address": "0xb2cee603045240187dce7e1f21bca69f63e40cea",
+                  "changed_at": "2026-10-08T12:11:10.631Z"
+                }
+              ]
+            }
+          }
+        }
+      ]
+    }
+  },
+  "operations": {
+    "indexedEvents": [
+      {
+        "tx_hash": "0x4c5eaa4bdb25480242c4160a6cf79c109c1b8d23f4182e9fea0c50edae0e51ee",
+        "event_name": "AccountCreated",
+        "block_number": "69257931"
+      },
+      {
+        "tx_hash": "0xc73ec4b44d665dc611f91c5dc9458a32b54cf6fc3c2d4d2c0f82c0d91d485a0f",
+        "event_name": "GrantCreated",
+        "block_number": "69257935"
+      },
+      {
+        "tx_hash": "0x2e2f4d3af1e9529654cad9797d17523c4a44f7c7c8f0e7de4f5df3a33f3a17b8",
+        "event_name": "Reserved",
+        "block_number": "69257939"
+      },
+      {
+        "tx_hash": "0xe3b1ac37e4e44c1c6e3ac5d9add76f560837ea8b8666d0adafb3c2c0071d7c91",
+        "event_name": "Spent",
+        "block_number": "69257943"
+      },
+      {
+        "tx_hash": "0xe3b1ac37e4e44c1c6e3ac5d9add76f560837ea8b8666d0adafb3c2c0071d7c91",
+        "event_name": "TransferExecuted",
+        "block_number": "69257943"
+      },
+      {
+        "tx_hash": "0x411f149b72f0a33f9ddeef3ea48d1239af6db2592c94d7aa9f3805512eb06d9d",
+        "event_name": "Reserved",
+        "block_number": "69257946"
+      },
+      {
+        "tx_hash": "0x8964f5113e6a8e9738c956c290c67beb15b65fecf7681996501d195353145e49",
+        "event_name": "Spent",
+        "block_number": "69257949"
+      },
+      {
+        "tx_hash": "0x8964f5113e6a8e9738c956c290c67beb15b65fecf7681996501d195353145e49",
+        "event_name": "TransferExecuted",
+        "block_number": "69257949"
+      },
+      {
+        "tx_hash": "0xdca5ddb3d0f187567b061ef5abafb891fedaea16495c812f55cf05a8c87766b2",
+        "event_name": "GrantRevoked",
+        "block_number": "69257951"
+      },
+      {
+        "tx_hash": "0x46e59cd624e257b04bd00bb2a2a3050d5d39475bfb3294c0a9cbcf482d59ba8b",
+        "event_name": "GrantCreated",
+        "block_number": "69259570"
+      },
+      {
+        "tx_hash": "0x6223552e1217059ded781d5b7669ba818b981b70e5d7a2b9b4f37de142acf8c4",
+        "event_name": "Reserved",
+        "block_number": "69259574"
+      },
+      {
+        "tx_hash": "0xe5af439c77ea2394aefaa8b7eae2b9525dfc4ccc3710d78a76f68d4f9bcbd1b0",
+        "event_name": "ObligationCreated",
+        "block_number": "69259577"
+      },
+      {
+        "tx_hash": "0xe5af439c77ea2394aefaa8b7eae2b9525dfc4ccc3710d78a76f68d4f9bcbd1b0",
+        "event_name": "LiabilityCommitted",
+        "block_number": "69259577"
+      },
+      {
+        "tx_hash": "0x93f33f03c44f1f508c4aaf1374d3ae9bdff5ffaefdd11288162714cb012211a2",
+        "event_name": "Funded",
+        "block_number": "69259581"
+      },
+      {
+        "tx_hash": "0xa0c63fdc2870673d6de0569ddad3ddd1283de7b41e6e4250f9a1525249aaecf0",
+        "event_name": "EvidenceSubmitted",
+        "block_number": "69259583"
+      },
+      {
+        "tx_hash": "0xf444fbc610ab53f3d69a1b4cf3741d1de1efdee855ea0ef53e3dc2dd93677986",
+        "event_name": "VerdictRecorded",
+        "block_number": "69259585"
+      },
+      {
+        "tx_hash": "0x9c29334fe133e925c38b931fa6972e65b33fd8af631981596d5ac8c0942bc380",
+        "event_name": "Finalized",
+        "block_number": "69260021"
+      },
+      {
+        "tx_hash": "0x9c29334fe133e925c38b931fa6972e65b33fd8af631981596d5ac8c0942bc380",
+        "event_name": "ReceiptFinalized",
+        "block_number": "69260021"
+      },
+      {
+        "tx_hash": "0x9c29334fe133e925c38b931fa6972e65b33fd8af631981596d5ac8c0942bc380",
+        "event_name": "Released",
+        "block_number": "69260021"
+      },
+      {
+        "tx_hash": "0x9c29334fe133e925c38b931fa6972e65b33fd8af631981596d5ac8c0942bc380",
+        "event_name": "LiabilityClosed",
+        "block_number": "69260021"
+      },
+      {
+        "tx_hash": "0xee81adc9e3b364dec2c225840f1fedb5632123e24b54ffe085e795040e2161e9",
+        "event_name": "GrantRevoked",
+        "block_number": "69260025"
+      }
+    ],
+    "accounts": [
+      {
+        "address": "0x807a24d7d055ea9a732a64896d744f5afe5f80d2",
+        "principal": "0xb2cee603045240187dce7e1f21bca69f63e40cea"
+      }
+    ],
+    "checkedAt": "2026-10-08T13:11:23.643Z",
+    "passed": true
+  },
+  "health": {
+    "healthy": true,
+    "faults": [],
+    "chainId": 10143,
+    "finalizedHead": "69263259",
+    "indexedBlock": "69263250",
+    "pendingOperations": {},
+    "heartbeats": [
+      {
+        "service": "indexer",
+        "lastSuccessAt": "2026-10-08T13:10:22.644Z",
+        "lastErrorAt": "2026-10-05T00:21:27.895Z",
+        "lastErrorCode": null
+      },
+      {
+        "service": "runner",
+        "lastSuccessAt": "2026-10-08T13:10:22.950Z",
+        "lastErrorAt": null,
+        "lastErrorCode": null
+      },
+      {
+        "service": "worker",
+        "lastSuccessAt": "2026-10-08T13:10:24.109Z",
+        "lastErrorAt": null,
+        "lastErrorCode": null
+      }
+    ]
+  },
+  "deployments": {
+    "agent": "279eac6a-2d37-4051-abe1-c181381d4206",
+    "api": "c7df8a48-b6db-4a98-8961-f72a71255aaf",
+    "gateway": "5c410940-efb0-42bd-96c7-58c6724098aa",
+    "model": "1a7a4bea-901c-478b-8761-c6015959bedb"
+  },
+  "conditional": [
+    "AWS KMS/Secrets Manager/S3 evidence and disaster recovery not configured or live-tested",
+    "Email OTP and passkey recovery require a real mailbox/authenticator session; real Privy wallet authentication tested",
+    "Paid provider managed-runner billing not exercised; real Llama model used through protected gateway",
+    "Mainnet intentionally not exercised",
+    "Arbitration, timeout, reorg and concurrency failure paths covered by automated tests, not every branch broadcast live"
+  ]
+}

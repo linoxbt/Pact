@@ -1,0 +1,16 @@
+import{control,load,save,api}from'./client.mjs';
+const r=load('resources.json'),checks=[];
+const endpoints=(await control('/v2/endpoints')).endpoints;
+const endpoint=endpoints.find(e=>e.service_id===r.service.id&&e.path_pattern===r.probe.path+'/read');
+await control(`/v2/endpoints/${endpoint.id}`,{responseFields:['ok','method']},'PATCH');
+const edited=await control(`/v2/endpoints/${endpoint.id}`,{description:'Live regression: preserve disclosure on edit'},'PATCH');
+if(JSON.stringify(edited.response_fields)!==JSON.stringify(['ok','method']))throw Error('Disclosure cleared');
+checks.push({name:'Live PATCH preserves response disclosure fields',status:'passed',evidence:{endpointId:endpoint.id}});
+const spec={openapi:'3.0.3',info:{title:'Duplicate operation',version:'1'},servers:[{url:api}],paths:{[r.probe.path+'/read']:{get:{responses:{200:{description:'OK'}}}}}};
+const response=await fetch(api+`/v2/services/${r.service.id}/import`,{method:'POST',headers:{authorization:`Bearer ${load('privy-session.json').token}`,'content-type':'application/json'},body:JSON.stringify({spec,grantId:r.grant.id,policyId:r.policy.id,currency:'USD'})});
+const data=await response.json();if(response.status!==409||data.error!=='ENDPOINT_ALREADY_REGISTERED')throw Error('Duplicate import conflict incorrect');
+checks.push({name:'Live duplicate OpenAPI import returns conflict without partial mutation',status:'passed',evidence:data});
+const account=await control('/v2/account'),history=await control('/v2/account/principal-history');
+if(account.verificationStatus!=='verified'||!account.onchainAccount||!history.changes.length)throw Error('Principal state incorrect');
+checks.push({name:'Live account exposes verified individual principal, deployed account and audited history',status:'passed',evidence:{account,history}});
+save('fixes-report.json',{checks});console.log(JSON.stringify({checks}));

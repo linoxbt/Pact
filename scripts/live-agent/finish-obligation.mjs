@@ -1,0 +1,35 @@
+import{readFileSync}from'node:fs';
+import{createPublicClient,createWalletClient,http,defineChain,encodeFunctionData,keccak256,encodeAbiParameters,parseAbiParameters}from'viem';
+import{privateKeyToAccount}from'viem/accounts';
+import{load,save,api,secretFile}from'./client.mjs';
+import{ObligationManagerAbi,ReceiptRegistryAbi,AuthorityRegistryAbi}from'../../packages/abis/dist/index.js';
+const chain=defineChain({id:10143,name:'Monad Testnet',nativeCurrency:{name:'MON',symbol:'MON',decimals:18},rpcUrls:{default:{http:['https://testnet-rpc.monad.xyz']}}});
+const rpc=createPublicClient({chain,transport:http()});if(await rpc.getChainId()!==10143)throw Error('Wrong chain');
+const report=load('obligation-report.json'),id=BigInt(report.obligationId),transfer=load('chain-report.json');
+const manifest=JSON.parse(readFileSync(new URL('../../deployments/monad-testnet.json',import.meta.url),'utf8'));
+const finalizer=privateKeyToAccount(readFileSync(new URL('../../.secrets/monad-testnet-deployer.key',import.meta.url),'utf8').trim());
+const receipt=await rpc.readContract({address:manifest.receipts,abi:ReceiptRegistryAbi,functionName:'getReceipt',args:[id]});
+if(!receipt.paid){
+ const data=encodeFunctionData({abi:ObligationManagerAbi,functionName:'finalize',args:[id]});
+ const gas=await rpc.estimateGas({account:finalizer,to:manifest.manager,data}),gasPrice=await rpc.getGasPrice();
+ if((gas+gas/5n)*gasPrice>50000000000000000n)throw Error('Finalization exceeds test budget');
+ const hash=await createWalletClient({chain,account:finalizer,transport:http()}).sendTransaction({to:manifest.manager,data,gas:gas+gas/5n,gasPrice});
+ const mined=await rpc.waitForTransactionReceipt({hash});if(mined.status!=='success')throw Error('Finalization reverted');
+ report.transactions.push({label:'Permissionless obligation finalization',hash,status:mined.status});save('obligation-report.json',report);
+}
+const anchored=await rpc.readContract({address:manifest.receipts,abi:ReceiptRegistryAbi,functionName:'getReceipt',args:[id]});
+const expected=keccak256(encodeAbiParameters(parseAbiParameters('uint256,address,uint256,bytes32,bytes32,bytes32,bool'),[10143n,manifest.receipts,id,anchored.termsDigest,anchored.evidenceHash,anchored.verdictHash,anchored.paid]));
+const tokenAbi=JSON.parse(readFileSync(new URL('../../packages/contracts/out/LiveTestToken.sol/LiveTestToken.json',import.meta.url),'utf8')).abi;
+const provider=privateKeyToAccount(load('roles.json').provider).address;
+const paid=await rpc.readContract({address:transfer.token,abi:tokenAbi,functionName:'balanceOf',args:[provider]});
+if(expected!==anchored.root||!anchored.paid||paid!==100000n)throw Error('Receipt mismatch');
+report.checks.push({name:'Settlement paid provider and receipt root independently recomputes',status:'passed',evidence:{root:expected,paidMinor:paid.toString(),registry:manifest.receipts}});
+const response=await fetch(`${api}/v1/receipts/${id}`),data=await response.json();
+if(!response.ok||data.receipt?.root!==expected)throw Error('Public receipt mismatch');
+report.checks.push({name:'Public receipt API agrees with canonical chain',status:'passed',evidence:data});
+const owner=privateKeyToAccount(readFileSync(secretFile('owner.key'),'utf8').trim());
+const revoke=encodeFunctionData({abi:AuthorityRegistryAbi,functionName:'revoke',args:[BigInt(report.grantId)]});
+const hash=await createWalletClient({chain,account:owner,transport:http()}).sendTransaction({to:manifest.registry,data:revoke,gas:100000n});
+const revocation=await rpc.waitForTransactionReceipt({hash});if(revocation.status!=='success')throw Error('Cleanup revocation failed');
+report.transactions.push({label:'Revoke completed obligation authority',hash,status:revocation.status});save('obligation-report.json',report);
+console.log(JSON.stringify({obligationId:report.obligationId,receiptRoot:expected,checks:report.checks.length}));

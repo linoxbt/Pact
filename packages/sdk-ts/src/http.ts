@@ -107,7 +107,7 @@ export class PactHttpClient {
       JSON.parse(raw) : raw;
     if (!response.ok) {
       const code = typeof data === 'object' && data && 'error' in data ? String(data.error) :
-        `HTTP_${response.status}`;
+        typeof data === 'object' && data && 'reason' in data ? String(data.reason) : `HTTP_${response.status}`;
       throw new Error(`Pact proxy ${response.status}: ${code}`);
     }
     return data;

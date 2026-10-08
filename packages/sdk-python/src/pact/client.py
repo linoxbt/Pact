@@ -134,7 +134,8 @@ class PactClient:
                 return json.loads(data)
         except HTTPError as exc:
             try:
-                error = json.loads(exc.read(4096)).get("error", "HTTP_ERROR")
+                detail = json.loads(exc.read(4096))
+                error = detail.get("error") or detail.get("reason") or "HTTP_ERROR"
             except (ValueError, AttributeError):
                 error = "HTTP_ERROR"
             raise PactApiError(exc.code, error) from exc
@@ -267,7 +268,8 @@ class PactClient:
                 return json.loads(data)
         except HTTPError as exc:
             try:
-                error = json.loads(exc.read(4096)).get("error", "HTTP_ERROR")
+                detail = json.loads(exc.read(4096))
+                error = detail.get("error") or detail.get("reason") or "HTTP_ERROR"
             except (ValueError, AttributeError):
                 error = "HTTP_ERROR"
             raise PactApiError(exc.code, error) from exc

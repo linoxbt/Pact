@@ -105,7 +105,7 @@ test('account-owned proxy flow enforces policy, encrypts secrets, audits and rev
     const stored = await database.query('SELECT ciphertext FROM pact_upstream_secrets WHERE service_id=$1',[service.id]);
     assert.equal(stored.rows[0].ciphertext.includes(upstreamSecret),false);
     const grant = (await request('POST','/v2/grants',{ agentId:agent.id,name:'Demo grant',
-      resourceOrigins:[origin],destinationOrigins:[origin],actions:['GET'],currency:'USD',
+      resourceOrigins:[origin],destinationOrigins:[origin],actions:['GET'],currency:'USD',allowedRecipients:['test-recipient'],
       perActionLimitMinor:'0',aggregateLimitMinor:'0',approvalThresholdMinor:'0',
       startsAt:new Date(Date.now()-60_000).toISOString(),expiresAt:new Date(Date.now()+86_400_000).toISOString() })).data;
     const policy = (await request('POST','/v2/policies',{ agentId:agent.id,name:'Read health',rules:[
@@ -115,6 +115,19 @@ test('account-owned proxy flow enforces policy, encrypts secrets, audits and rev
       policyId:policy.id,method:'GET',pathPattern:'/health',costMinor:'0',currency:'USD',
       responseFields:['ok','echoedSecret','encodedSecret'] })).data;
     assert.equal(endpoint.id.length,36);
+    const edited = await request('PATCH', `/v2/endpoints/${endpoint.id}`, { description:'Updated description' });
+    assert.deepEqual(edited.data.response_fields,['ok','echoedSecret','encodedSecret']);
+    const renamedBounds = await request('PATCH', `/v2/grants/${grant.id}`, { actions:['GET'] });
+    assert.deepEqual(renamedBounds.data.allowed_recipients,['test-recipient']);
+    const narrowedRecipients = await request('PATCH', `/v2/grants/${grant.id}`, { allowedRecipients:['different-recipient'] });
+    assert.equal(narrowedRecipients.response.statusCode,409);
+    const duplicateImport = await request('POST', `/v2/services/${service.id}/import`, {
+      spec: { openapi:'3.0.3',info:{title:'Duplicate operation',version:'1'},
+        servers:[{url:origin}],paths:{'/health':{get:{responses:{200:{description:'OK'}}}}} },
+      grantId:grant.id,policyId:policy.id,currency:'USD',
+    });
+    assert.equal(duplicateImport.response.statusCode,409);
+    assert.equal(duplicateImport.data.error,'ENDPOINT_ALREADY_REGISTERED');
     const issued = (await request('POST',`/v2/agents/${agent.id}/keys`,{
       name:'Demo integration',scopes:['proxy.read'],expiresAt:new Date(Date.now()+86_400_000).toISOString() })).data;
     assert.match(issued.secret,/^pat_[A-Za-z0-9_-]{43}$/);

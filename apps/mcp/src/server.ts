@@ -164,7 +164,8 @@ export function pactGatewayApi(baseUrl: string, token: string, fetcher: typeof f
     if (raw.length > 1_000_000) throw new Error('Pact proxy response too large');
     const data = response.headers.get('content-type')?.includes('application/json') ? JSON.parse(raw) : raw;
     if (!response.ok) throw new Error(`Pact proxy ${response.status}: ${
-      typeof data === 'object' && data && 'error' in data ? String(data.error) : 'request_failed'}`);
+      typeof data === 'object' && data && 'error' in data ? String(data.error) :
+        typeof data === 'object' && data && 'reason' in data ? String(data.reason) : 'request_failed'}`);
     return data;
   };
 }

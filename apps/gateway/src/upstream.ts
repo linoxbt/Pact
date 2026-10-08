@@ -3,7 +3,10 @@ import { BlockList, isIP } from 'node:net';
 import { request as httpRequest } from 'node:http';
 import { request as httpsRequest } from 'node:https';
 
-const blocked = new BlockList();
+// Node BlockList treats IPv4 as IPv4-mapped IPv6 internally. Keep families
+// separate or blocking ::ffff:0:0/96 also blocks every public IPv4 address.
+const blockedV4 = new BlockList();
+const blockedV6 = new BlockList();
 for (const [subnet, prefix] of [
   ['0.0.0.0',8],['10.0.0.0',8],['100.64.0.0',10],['127.0.0.0',8],['169.254.0.0',16],
   ['172.16.0.0',12],['192.0.0.0',24],['192.0.2.0',24],['192.168.0.0',16],
@@ -11,7 +14,15 @@ for (const [subnet, prefix] of [
   ['224.0.0.0',4],['240.0.0.0',4],['::',128],['::1',128],['fc00::',7],['fe80::',10],
   ['ff00::',8],['::ffff:0:0',96],['64:ff9b::',96],['64:ff9b:1::',48],
   ['2001:db8::',32],['2002::',16],
-] as const) blocked.addSubnet(subnet, prefix, isIP(subnet) === 4 ? 'ipv4' : 'ipv6');
+] as const) {
+  const ipv4 = isIP(subnet) === 4;
+  (ipv4 ? blockedV4 : blockedV6).addSubnet(subnet, prefix, ipv4 ? 'ipv4' : 'ipv6');
+}
+export function isBlockedUpstreamAddress(address: string): boolean {
+  const family = isIP(address);
+  return family === 4 ? blockedV4.check(address, 'ipv4') :
+    family === 6 ? blockedV6.check(address, 'ipv6') : true;
+}
 
 export type UpstreamResult = { status: number; contentType: string; body: Buffer };
 export async function forwardUpstream(url: URL, method: string, headers: Record<string,string>,
@@ -29,17 +40,20 @@ export async function forwardUpstream(url: URL, method: string, headers: Record<
       controller.signal.addEventListener('abort', abortLookup, { once: true });
     })]);
   if (abortLookup) controller.signal.removeEventListener('abort', abortLookup);
-  if (!resolved.length || resolved.some(item => !allowLocal && blocked.check(item.address,
-    item.family === 4 ? 'ipv4' : 'ipv6')))
+  if (!resolved.length || resolved.some(item => !allowLocal && isBlockedUpstreamAddress(item.address)))
     throw new Error('UPSTREAM_ADDRESS_NOT_ALLOWED');
   if (allowLocal && !['127.0.0.1','localhost','::1','[::1]'].includes(url.hostname) &&
-      resolved.some(item => blocked.check(item.address, item.family === 4 ? 'ipv4' : 'ipv6')))
+      resolved.some(item => isBlockedUpstreamAddress(item.address)))
     throw new Error('UPSTREAM_ADDRESS_NOT_ALLOWED');
   const address = resolved[0]!;
   return await new Promise((resolve, reject) => {
     const requester = url.protocol === 'https:' ? httpsRequest : httpRequest;
+    const connectionOptions = { autoSelectFamily: false };
     const req = requester(url, {
       method, headers, signal: controller.signal, timeout: timeoutMs, maxHeaderSize: 16_384,
+      // We already selected and validated one address. Node's automatic family
+      // selection expects an array from lookup and would reject this pinned IP.
+      ...connectionOptions,
       lookup: (_hostname, _options, callback) => callback(null, address.address, address.family),
     }, response => {
       const status = response.statusCode ?? 502;

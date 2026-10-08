@@ -220,7 +220,7 @@ export function registerControlPlaneRoutes(app: FastifyInstance, ctx: ApiContext
     const owner = await ownerId(request.headers.authorization, ctx);
     const grantId = uuid.parse((request.params as { id: string }).id);
     const input = z.object({ actions: z.array(methodSchema).min(1).optional(),
-      allowedRecipients:grantInput.shape.allowedRecipients.optional(),
+      allowedRecipients:grantInput.shape.allowedRecipients.unwrap().optional(),
       resourceOrigins: z.array(upstreamOrigin).min(1).optional(),
       destinationOrigins: z.array(upstreamOrigin).min(1).optional(),
       perActionLimitMinor: money.optional(), aggregateLimitMinor: money.optional(),
@@ -500,7 +500,7 @@ export function registerControlPlaneRoutes(app: FastifyInstance, ctx: ApiContext
     const endpoint = await getOwned(ctx, 'pact_endpoints', (request.params as { id: string }).id, owner);
     const input = z.object({ description: z.string().max(500).optional(),
       status: z.enum(['active','disabled']).optional(), policyId: uuid.optional(),
-      responseFields: endpointInput.shape.responseFields.optional() }).strict().parse(request.body);
+      responseFields: endpointInput.shape.responseFields.unwrap().optional() }).strict().parse(request.body);
     if (!Object.keys(input).length) fail('EMPTY_UPDATE');
     if (input.policyId) {
       const policy = await getOwned(ctx, 'pact_http_policies', input.policyId, owner);
@@ -607,7 +607,12 @@ export function registerControlPlaneRoutes(app: FastifyInstance, ctx: ApiContext
       }
       await client.query('COMMIT');
       return { imported: jsonSafe(imported) };
-    } catch (cause) { await client.query('ROLLBACK'); throw cause; }
+    } catch (cause) {
+      await client.query('ROLLBACK');
+      if (cause && typeof cause === 'object' && 'code' in cause && cause.code === '23505')
+        fail('ENDPOINT_ALREADY_REGISTERED', 409);
+      throw cause;
+    }
     finally { client.release(); }
   });
 

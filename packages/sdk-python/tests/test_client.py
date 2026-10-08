@@ -64,6 +64,16 @@ class ClientTests(unittest.TestCase):
         self.assertEqual(raised.exception.code, "AGENT_SCOPE_DENIED")
         self.assertNotIn("secret", str(raised.exception))
 
+    def test_proxy_preserves_policy_denial_reason(self):
+        def transport(*_args, **_kwargs):
+            raise HTTPError("https://pact.example", 403, "Forbidden", {},
+                            io.BytesIO(b'{"reason":"EXPLICIT_DENY"}'))
+        with self.assertRaises(PactApiError) as raised:
+            PactClient("https://pact.example", "secret", transport=transport).proxy(
+                "00000000-0000-4000-8000-000000000001",
+                "00000000-0000-4000-8000-000000000002", "GET", "/health")
+        self.assertEqual(raised.exception.code, "EXPLICIT_DENY")
+
 
 if __name__ == "__main__":
     unittest.main()

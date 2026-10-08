@@ -1,7 +1,14 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { Client, InMemoryTransport } from '@modelcontextprotocol/client';
-import { createPactMcp, pactHttpApi } from '../dist/server.js';
+import { createPactMcp, pactHttpApi, pactGatewayApi } from '../dist/server.js';
+
+test('gateway tool preserves policy denial reason',async()=>{
+  const proxy=pactGatewayApi('https://pact.example','pat_'+'a'.repeat(43),async()=>
+    Response.json({reason:'RULE_DENIED'},{status:403}));
+  await assert.rejects(()=>proxy('00000000-0000-4000-8000-000000000001',
+    '00000000-0000-4000-8000-000000000002','GET','/health'),/RULE_DENIED/);
+});
 
 test('MCP validates input and forwards only scoped Pact calls', async () => {
   const calls = [];

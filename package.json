@@ -5,10 +5,11 @@
   "packageManager": "pnpm@11.9.0",
   "scripts": {
     "check": "pnpm build && forge build --root packages/contracts && node scripts/generate-abis.mjs --check && pnpm -r check && forge fmt --check --root packages/contracts && forge test --root packages/contracts && PYTHONPATH=packages/sdk-python/src python3 -m unittest discover -s packages/sdk-python/tests",
-    "test": "pnpm --filter @pact/schemas test && pnpm --filter @pact/engine test && pnpm --filter @pact/proofs test && pnpm --filter @pact/sdk-ts test && pnpm --filter @pact/policies test && pnpm --filter @pact/security test && pnpm --filter @pact/operations test && pnpm --filter @pact/api test && pnpm --filter @pact/gateway test && pnpm --filter @pact/worker test && pnpm --filter @pact/indexer test && pnpm --filter @pact/runner test && pnpm --filter @pact/mcp test && PYTHONPATH=packages/sdk-python/src python3 -m unittest discover -s packages/sdk-python/tests && forge test --root packages/contracts",
+    "test": "pnpm --filter @pact/schemas test && pnpm --filter @pact/engine test && pnpm --filter @pact/proofs test && pnpm --filter @pact/sdk-ts test && pnpm --filter @pact/policies test && pnpm --filter @pact/security test && pnpm --filter @pact/operations test && pnpm --filter @pact/api test && pnpm --filter @pact/gateway test && pnpm --filter @pact/worker test && pnpm --filter @pact/indexer test && pnpm --filter @pact/runner test && pnpm --filter @pact/mcp test && PYTHONPATH=packages/sdk-python/src python3 -m unittest discover -s packages/sdk-python/tests && forge test --root packages/contracts && pnpm test:live-agent-safety",
     "build": "pnpm --filter @pact/abis build && pnpm --filter @pact/schemas build && pnpm --filter @pact/engine build && pnpm --filter @pact/proofs build && pnpm --filter @pact/sdk-ts build && pnpm --filter @pact/policies build && pnpm --filter @pact/security build && pnpm --filter @pact/operations build && pnpm --filter @pact/api build && pnpm --filter @pact/gateway build && pnpm --filter @pact/worker build && pnpm --filter @pact/indexer build && pnpm --filter @pact/runner build && pnpm --filter @pact/mcp build && pnpm --filter @pact/console build && pnpm --filter @pact/explorer build",
     "generate:abis": "forge build --root packages/contracts && node scripts/generate-abis.mjs",
-    "ops:status": "node scripts/ops-status.mjs"
+    "ops:status": "node scripts/ops-status.mjs",
+    "test:live-agent-safety": "node --test scripts/live-agent/security.test.mjs tools/test-model/worker.test.mjs"
   },
   "devDependencies": {
     "typescript": "^5.9.3",
