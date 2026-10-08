@@ -155,12 +155,17 @@ try {
   await evaluate(`document.querySelector('[aria-label="Collapse sidebar"]').click()`);
   assert.equal(await evaluate(`localStorage.getItem('pact:sidebar-collapsed')`),'true');
   await click('Account');await waitFor(`document.body.innerText.includes(${JSON.stringify(owners[0].principalAddress)})`);
+  await waitFor(`document.querySelector('[aria-label="Sign-in and security"]')`);
+  await evaluate(`window.testPasskeyReject=true`);await click('Create passkey');
+  await waitFor(`document.body.innerText.includes('Passkey was not created')`);
+  await evaluate(`window.testPasskeyReject=false`);await click('Create passkey');
+  await waitFor(`document.body.innerText.includes('Passkey created.')`);
   await click('Sign out');await waitFor(`document.body.innerText.includes(${JSON.stringify(owners[1].principalAddress)})`);
   await click('Agents');await waitFor(`document.body.innerText.includes('Agent name')`);
   assert.equal(await evaluate(`document.body.innerText.includes(${JSON.stringify(name)})`),false);
   await click('Account');await waitFor(`document.body.innerText.includes(${JSON.stringify(owners[1].principalAddress)})`);
   assert.equal(await evaluate(`document.body.innerText.includes(${JSON.stringify(owners[0].principalAddress)})`),false);
-  console.log('PASS: real Console/API/database/gateway/upstream; registration, key issue, allow/deny, redaction, live activity, approval inspection/polling/expiry, revoke, partial-service recovery, independent workspace loads, sidebar persistence, account isolation, complete verification button workflow (Privy identity mocked locally)');
+  console.log('PASS: real Console/API/database/gateway/upstream; registration, key issue, allow/deny, redaction, live activity, approval inspection/polling/expiry, revoke, partial-service recovery, independent workspace loads, sidebar persistence, passkey success/cancellation UI, account isolation, complete verification button workflow (Privy identity mocked locally)');
 } finally {
   ws?.close();chrome.kill('SIGTERM');await vite.close();await api.close();await gateway.close();
   upstream.closeAllConnections();await new Promise(resolve=>upstream.close(resolve));await database.end();

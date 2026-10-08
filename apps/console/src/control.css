@@ -48,3 +48,7 @@
   .cpBrand{padding:0 10px 27px}
   .cpSidebarFoot{padding-top:25px}
 }
+
+.cpSecurity {display:flex;align-items:center;justify-content:space-between;gap:24px;margin-bottom:24px;border-top:3px solid var(--cp-accent,#245342)}
+.cpSecurity h2 {margin:8px 0}.cpSecurity p {max-width:44ch}.cpSecurity .cpPrimary {white-space:nowrap;display:inline-flex;align-items:center;gap:8px}
+@media(max-width:640px){.cpSecurity{align-items:flex-start;flex-direction:column}.cpSecurity>div:last-child{width:100%}.cpSecurity .cpPrimary{width:100%;justify-content:center}}

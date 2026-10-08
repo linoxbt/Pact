@@ -8,4 +8,4 @@ export function usePrivy(){const id=useSyncExternalStore(callback=>{subscribers.
   return {ready:true,authenticated:true,user:{id},login(){},logout:async()=>switchTestUser()};}
 export function useWallets(){return {wallets:[]};}
 export function useConnectWallet(){return {connectWallet(){}};}
-export function useLinkWithPasskey(){return {linkWithPasskey:async()=>{}};}
+export function useLinkWithPasskey(){return {linkWithPasskey:async()=>{if((window as unknown as {testPasskeyReject?:boolean}).testPasskeyReject)throw new Error('Device cancelled');}};}

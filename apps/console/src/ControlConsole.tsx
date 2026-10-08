@@ -1,6 +1,7 @@
 import { activeNetwork, networkNotice } from './networks.js';
 import { useEffect, useRef, useState } from 'react';
-import { getAccessToken, useConnectWallet, useLinkWithPasskey, usePrivy, useWallets } from '@privy-io/react-auth';
+import { getAccessToken, useConnectWallet, usePrivy, useWallets } from '@privy-io/react-auth';
+import {AccountSecurity} from './AccountSecurity.js';
 import { Brand, Icon } from './ui.js';
 import './control.css';
 import { VerificationPanel } from './VerificationPanel.js';
@@ -94,7 +95,6 @@ export function ControlConsole() {
   const activityLatest=useRef<Activity[]>([]);
   const { wallets } = useWallets();
   const { connectWallet } = useConnectWallet();
-  const { linkWithPasskey } = useLinkWithPasskey();
   const [view, setView] = useState<View>(()=>readRoute().view);
   const [menuOpen, setMenuOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
@@ -368,6 +368,7 @@ export function ControlConsole() {
           ''}</p></div>
         {authenticated && account?.principalAddress && <div className="cpPrincipalBadge"><small>YOUR PRINCIPAL ADDRESS</small><code title={account.principalAddress}>{short(account.principalAddress)}</code><span>{account.verificationStatus}</span></div>}</div>
       {notice && <div className="cpNotice" role="status">{notice}<button disabled={busy} onClick={()=>void run(refresh)}>Retry loading</button><button onClick={() => setNotice('')} aria-label="Dismiss">×</button></div>}
+      {authenticated && view==='account' && <AccountSecurity key={user?.id}/>}
       {!ready && <p className="cpLoading">Loading account…</p>}
       {ready && !authenticated && <section className="cpHeroPanel"><span className="cpEyebrow">YOUR AGENT WORKSPACE</span><h2>Start with your account.</h2>
         <p>Email, passkey or wallet. HTTP agents need no wallet.</p>
@@ -612,7 +613,7 @@ export function ControlConsole() {
           await api('/v2/account/address/verify',{challengeId:challenge.challengeId,signature});
           setAccount(await api<Account>('/v2/account'));await refresh();setChangeAddress('');setNotice('Principal changed for future grants. Existing grants are unchanged.');
         })}>Review address change</button>
-        <button onClick={()=>void run(async()=>{await linkWithPasskey({name:'Pact Console'});setNotice('Passkey added to your account.');})}>Add passkey</button></section>
+        </section>
         <section className="cpCard"><span className="cpEyebrow">MIGRATION & CUSTODY</span><h2>Existing grants</h2><p>Existing Monad grants retain their original signer.</p><p>{legacyCount===null?'Check your existing grant list before migrating.':`${legacyCount} indexed legacy grants are visible to the original principal session.`}</p><a href="/legacy">Open existing Monad grant manager ↗</a><a href="/docs#custody">Read custody, recovery and revocation model ↗</a><p className="cpHint">HTTP: migrate in Grants. Monad: revoke and reissue, then rotate keys.</p></section></div>}
       </>}
       </>}
