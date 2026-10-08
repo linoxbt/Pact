@@ -94,8 +94,12 @@ try {
   await evaluate(`document.querySelector('.mobileMenu').click();document.querySelector('.navLinks a[href="#use-cases"]').click()`);
   await waitFor(`!document.querySelector('.navLinks').classList.contains('navOpen')`);
   await evaluate(`document.querySelector('#policy-preview').scrollIntoView()`);await screenshot('pact-saas-mobile-policy');await layout('Mobile playground');
-  await go('/docs#quickstart');await waitFor(`document.querySelector('.docsArticle').textContent.includes('Connect an agent')`);await layout('Docs');
-  await go('/app#verification');await waitFor(`document.body.innerText.includes('Create account or sign in')`);await layout('App sign-in');
+  await go('/docs/quickstart');await waitFor(`document.querySelector('.docsArticle').textContent.includes('Connect an agent')`);await layout('Docs');await screenshot('pact-docs-quickstart');
+  assert.equal(await evaluate(`document.querySelector('.siteFooter')===null`),true);
+  await go('/docs/api');await waitFor(`document.querySelector('.docsArticle').textContent.includes('HTTP API reference')`);await layout('API docs');
+  await go('/app/verification');await waitFor(`document.body.innerText.includes('Create account or sign in')`);await layout('App sign-in');
+  await go('/app/agents');await waitFor(`document.querySelector('.cpPageHead h1')?.textContent==='Agents'`);await layout('Direct agents page');
+  assert.equal(await evaluate(`document.querySelector('nav[aria-label="Console navigation"] a[href="/app/policies"]')!==null`),true);
   assert.deepEqual(errors,[]);
   console.log('PASS: landing navigation, real policy evaluation (allow/deny/approval/rate/default deny), product walkthrough, all SDK tabs, copy, FAQ, photography, responsive layouts, docs and Console sign-in route. No upstream requests sent.');
 } finally {

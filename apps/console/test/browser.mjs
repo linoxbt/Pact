@@ -150,7 +150,7 @@ try {
   await evaluate(`document.querySelector('[aria-label="View Pact enforcement verification"]').click()`);
   await waitFor(`document.querySelector('.dbResourceHero')?.innerText.includes('Pact enforcement verification')`);
   await waitFor(`document.body.innerText.includes('Verification HTTP authority')`);
-  assert.ok(await evaluate(`location.hash.startsWith('#agents/')`));
+  assert.ok(await evaluate(`location.pathname.startsWith('/app/agents/')`));
   await call('Page.reload');await waitFor(`document.querySelector('.dbResourceHero')?.innerText.includes('Pact enforcement verification')`);
   await call('Runtime.evaluate',{expression:'history.back()'});await waitFor(`document.querySelector('.dbDashboard')`);
   await call('Emulation.setDeviceMetricsOverride',{width:390,height:844,deviceScaleFactor:1,mobile:true});

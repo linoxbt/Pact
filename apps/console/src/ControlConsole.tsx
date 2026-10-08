@@ -29,7 +29,13 @@ const nav: { id: View; label: string; icon: string }[] = [
   { id: 'audit', label: 'Audit history', icon: 'book' },
   { id: 'account', label: 'Account', icon: 'wallet' },
 ];
-const readRoute=()=>{const [page,id]=window.location.hash.slice(1).split('/');return {view:(nav.some(x=>x.id===page)?page:'overview') as View,id:id&&/^[0-9a-f-]{36}$/i.test(id)?id:undefined};};
+const readRoute=()=>{
+  const path=window.location.pathname.replace(/\/$/,'').split('/').filter(Boolean);
+  const legacy=window.location.hash.slice(1).split('/');
+  const parts=path[0]==='app'&&path.length>1?path.slice(1):legacy;
+  const [page,id]=parts;
+  return {view:(nav.some(x=>x.id===page)?page:'overview') as View,id:id&&/^[0-9a-f-]{36}$/i.test(id)?id:undefined};
+};
 const json = (value: unknown) => JSON.stringify(value, (_key, field) =>
   typeof field === 'bigint' ? field.toString() : field);
 async function requestControl<T = Item>(path: string, body?: unknown, method?: string, scope?: {signal:AbortSignal;did?:string},paymentId?:string): Promise<T> {
@@ -292,16 +298,13 @@ export function ControlConsole() {
   }, [sidebarCollapsed]);
 
   useEffect(()=>{
-    const handler=()=>{const route=readRoute();setView(route.view);setSelected(route.id?{id:route.id}:undefined);setDetailEditing(false);};
-    window.addEventListener('hashchange',handler);return()=>window.removeEventListener('hashchange',handler);
-  },[]);
-  useEffect(()=>{
-    const hash=`#${view}${selected?`/${selected.id}`:''}`;
-    if(window.location.hash!==hash) window.history.pushState(null,'',hash);
+    const target=`/app/${view}${selected?`/${selected.id}`:''}`;
+    if(window.location.pathname!==target||window.location.hash) window.history.replaceState(null,'',target);
   },[view,selected?.id]);
   useEffect(()=>{
     const handler=()=>{const route=readRoute();setView(route.view);setSelected(route.id?{id:route.id}:undefined);setDetailEditing(false);};
-    window.addEventListener('popstate',handler);return()=>window.removeEventListener('popstate',handler);
+    window.addEventListener('popstate',handler);window.addEventListener('hashchange',handler);
+    return()=>{window.removeEventListener('popstate',handler);window.removeEventListener('hashchange',handler);};
   },[]);
   useEffect(()=>{setDetailEditing(false);},[view,selected?.id]);
   useEffect(()=>{
@@ -327,7 +330,7 @@ export function ControlConsole() {
     if(view==='activity') {setActivityDetail(undefined);void api<Activity>(`/v2/activity/${selected.id}`).then(data=>{if(active)setActivityDetail(data);}).catch(()=>{if(active)setNotice('Request unavailable.');});}
     return()=>{active=false;};
   },[view,selected?.id,controlStatus]);
-  const choose = (next: View, id?:string) => { setView(next); setSelected(id?{id}:undefined);setDetailEditing(false);setMenuOpen(false);setNotice('');window.scrollTo({top:0}); };
+  const choose = (next: View, id?:string) => { window.history.pushState(null,'',`/app/${next}${id?`/${id}`:''}`);setView(next); setSelected(id?{id}:undefined);setDetailEditing(false);setMenuOpen(false);setNotice('');window.scrollTo({top:0}); };
   const showDetail=Boolean(selected&&!detailEditing&&['agents','grants','policies','endpoints','keys','approvals','activity'].includes(view));
   const withReview = (title: string, summary: string[], action: () => Promise<void>) =>
     setReview({ title, summary, action });
@@ -356,11 +359,11 @@ export function ControlConsole() {
     <aside className={`cpSidebar ${menuOpen ? 'open' : ''}`}><div className="cpBrand"><Brand/><button className="cpClose" onClick={() => setMenuOpen(false)} aria-label="Close menu">×</button></div>
       <div className="cpWorkspaceIdentity"><span className="cpWorkspaceAvatar">P</span><div className="cpWorkspaceIdentityText">Pact workspace<small><i className="cpStatusDot"/> {activeNetwork.name}</small></div><span className="cpWorkspaceVersion">01</span></div>
       <span className="cpNavLabel">WORKSPACE</span><nav id="pact-console-nav" aria-label="Console navigation">{nav.map(item =>
-        <button key={item.id} className={view === item.id ? 'active' : ''} onClick={() => choose(item.id)}
+        <a key={item.id} href={`/app/${item.id}`} className={view === item.id ? 'active' : ''} onClick={event => {event.preventDefault();choose(item.id);}}
           aria-current={view === item.id ? 'page' : undefined} aria-label={item.label}
           title={sidebarCollapsed ? item.label : undefined}><Icon name={item.icon} size={18}/><span className="cpNavText">{item.label}</span>
           {item.id === 'approvals' && approvals.filter(value => value.state === 'pending').length > 0 &&
-            <em>{approvals.filter(value => value.state === 'pending').length}</em>}</button>)}</nav>
+            <em>{approvals.filter(value => value.state === 'pending').length}</em>}</a>)}</nav>
       <div className="cpSidebarFoot"><a href="/docs" aria-label="Developer docs" title={sidebarCollapsed ? 'Developer docs' : undefined}><Icon name="book" size={17}/><span className="cpFootText">Developer docs</span><Icon name="external" size={13}/></a>
         <a href="/explorer" aria-label="Public Explorer" title={sidebarCollapsed ? 'Public Explorer' : undefined}><Icon name="globe" size={17}/><span className="cpFootText">Public Explorer</span><Icon name="external" size={13}/></a>
         <a href="/legacy" aria-label="Existing Monad grants" title={sidebarCollapsed ? 'Existing Monad grants' : undefined}><Icon name="shield" size={17}/><span className="cpFootText">Existing Monad grants</span><Icon name="external" size={13}/></a>
@@ -626,7 +629,7 @@ export function ControlConsole() {
           setAccount(await api<Account>('/v2/account'));await refresh();setChangeAddress('');setNotice('Principal changed for future grants. Existing grants are unchanged.');
         })}>Review address change</button>
         </section>
-        <section className="cpCard"><span className="cpEyebrow">MIGRATION & CUSTODY</span><h2>Existing grants</h2><p>Existing Monad grants retain their original signer.</p><p>{legacyCount===null?'Check your existing grant list before migrating.':`${legacyCount} indexed legacy grants are visible to the original principal session.`}</p><a href="/legacy">Open existing Monad grant manager ↗</a><a href="/docs#custody">Read custody, recovery and revocation model ↗</a><p className="cpHint">HTTP: migrate in Grants. Monad: revoke and reissue, then rotate keys.</p></section></div>}
+        <section className="cpCard"><span className="cpEyebrow">MIGRATION & CUSTODY</span><h2>Existing grants</h2><p>Existing Monad grants retain their original signer.</p><p>{legacyCount===null?'Check your existing grant list before migrating.':`${legacyCount} indexed legacy grants are visible to the original principal session.`}</p><a href="/legacy">Open existing Monad grant manager ↗</a><a href="/docs/custody">Read custody, recovery and revocation model ↗</a><p className="cpHint">HTTP: migrate in Grants. Monad: revoke and reissue, then rotate keys.</p></section></div>}
       </>}
       </>}
       </main></div>
