@@ -93,6 +93,7 @@ export function ControlConsole() {
   useEffect(()=>{if(lifetime.current.signal.aborted)lifetime.current=new AbortController();const current=lifetime.current;return()=>current.abort();},[]);
   const rawApi=<T=Item,>(path:string,body?:unknown,method?:string,paymentId?:string)=>requestControl<T>(path,body,method,{signal:lifetime.current.signal,did:user?.id},paymentId);
   const [feeConfig,setFeeConfig]=useState<FeeConfig>();
+  const [paymentRevision,setPaymentRevision]=useState(0);
   const [paymentTask,setPaymentTask]=useState<{path:string;body:unknown;existing?:Payment;resolve:(value:Item)=>void;reject:(cause:Error)=>void}>();
   const api=async<T=Item,>(path:string,body?:unknown,method?:string):Promise<T>=>{
     const billable=(method??(body===undefined?'GET':'POST'))==='POST'&&(/^\/v2\/(agents|grants|policies)$/.test(path)||/^\/v2\/agents\/[^/]+\/keys$/.test(path));
@@ -378,7 +379,8 @@ export function ControlConsole() {
           ''}</p></div>
         {authenticated && account?.principalAddress && <div className="cpPrincipalBadge"><small>YOUR PRINCIPAL ADDRESS</small><code title={account.principalAddress}>{short(account.principalAddress)}</code><span>{account.verificationStatus}</span></div>}</div>
       {notice && <div className="cpNotice" role="status">{notice}<button disabled={busy} onClick={()=>void run(refresh)}>Retry loading</button><button onClick={() => setNotice('')} aria-label="Dismiss">×</button></div>}
-      {authenticated && view==='account' && <><AccountSecurity key={user?.id}/><PaymentHistory key={`payments:${user?.id}`} api={rawApi} onResume={existing=>setPaymentTask({path:existing.path,body:existing.payload,existing,resolve:()=>{setNotice('Paid action completed.');void refresh();},reject:cause=>setNotice(cause.message)})}/></>}
+        {newSecret && <div className="cpSecret" role="alert"><strong>Copy this key now</strong><code>{newSecret}</code><Copy text={newSecret} label="Copy key"/><button onClick={()=>setNewSecret('')}>I saved it</button></div>}
+      {authenticated && view==='account' && <><AccountSecurity key={user?.id}/><PaymentHistory key={`payments:${user?.id}:${paymentRevision}`} api={rawApi} onResume={existing=>setPaymentTask({path:existing.path,body:existing.payload,existing,resolve:value=>{if(typeof value.secret==='string'){setNewSecret(value.secret);setNotice('Key issued. Copy it now.');}else setNotice('Paid action completed.');void refresh();},reject:cause=>setNotice(cause.message)})}/></>}
       {!ready && <p className="cpLoading">Loading account…</p>}
       {ready && !authenticated && <section className="cpHeroPanel"><span className="cpEyebrow">YOUR AGENT WORKSPACE</span><h2>Start with your account.</h2>
         <p>Email, passkey or wallet. HTTP agents need no wallet.</p>
@@ -562,7 +564,7 @@ export function ControlConsole() {
             const result=await api<{secret:string}>(`/v2/agents/${keyForm.agentId}/keys`,{name:keyForm.name,scopes:keyForm.scopes,expiresAt:keyForm.expiresAt});
             setNewSecret(result.secret);setTestKey(result.secret);await refreshKeys(keyForm.agentId);await refresh();setNotice('Key issued. Copy it now; Pact will not show it again.');
           })}>Review and issue <Icon name="arrow" size={15}/></button>
-        {newSecret && <div className="cpSecret" role="alert"><strong>Copy this key now</strong><code>{newSecret}</code><Copy text={newSecret} label="Copy key"/><button onClick={()=>setNewSecret('')}>I saved it</button></div>}
+
         <div className="cpDivider"/><h3>Keys for {selectedAgent?.name??'selected agent'}</h3>{keys.length ? keys.map(item=><div className="cpListRow" key={item.id}><span className="cpAvatar"><Icon name="key" size={18}/></span><div><strong>{item.name}</strong><small>{item.prefix}… · {item.scopes?.join(', ')} · {item.revoked_at?'revoked':new Date(item.expires_at)<new Date()?'expired':'active'}</small><small>Last used: {item.last_used_at?new Date(item.last_used_at).toLocaleString():'never'}</small></div><button onClick={()=>choose('keys',item.id)}>View more</button>{!item.revoked_at && <div className="cpKeyActions"><button onClick={()=>withReview('Rotate key',[`Old key ${item.prefix}… stops working immediately.`,`New key keeps scopes ${item.scopes.join(', ')} and expiry.`],async()=>{const result=await api<{secret:string}>(`/v2/agents/${keyForm.agentId}/keys/${item.id}/rotate`,{});setNewSecret(result.secret);setTestKey(result.secret);await refreshKeys(keyForm.agentId);await refresh();})}>Rotate</button><button className="cpDanger" onClick={()=>withReview('Revoke key',[`Key ${item.prefix}… will stop working immediately.`],async()=>{await api(`/v2/agents/${keyForm.agentId}/keys/${item.id}`,undefined,'DELETE');await refreshKeys(keyForm.agentId);await refresh();})}>Revoke</button></div>}</div>) : <Empty title="No keys for this agent" detail="Issue one after registering an endpoint."/>}</section>
         <section className="cpCard"><span className="cpEyebrow">INTEGRATE</span><h2>Call Pact from your agent</h2><p>Use the gateway URL with the scoped key. Keep the key in a server-side secret store. It is never an onchain signer.</p>
           <Field label="Proxy URL"><code className="cpCode">{proxyUrl}</code><Copy text={proxyUrl}/></Field>
@@ -628,7 +630,7 @@ export function ControlConsole() {
       </>}
       </>}
       </main><footer className="cpFooter"><span>PACT PROTOCOL · Programmable authority for agents</span><span>Private gateway activity · Monad receipts only when anchored</span></footer></div>
-    {paymentTask && <ActionPayment api={rawApi} path={paymentTask.path} body={paymentTask.body} existing={paymentTask.existing} onDone={value=>{paymentTask.resolve(value);setPaymentTask(undefined);void rawApi<Account>('/v2/account').then(setAccount);}} onCancel={()=>{paymentTask.reject(Error('Payment closed. Resume pending payments from Account.'));setPaymentTask(undefined);}}/>}
+    {paymentTask && <ActionPayment api={rawApi} path={paymentTask.path} body={paymentTask.body} existing={paymentTask.existing} onDone={value=>{paymentTask.resolve(value);setPaymentTask(undefined);setPaymentRevision(current=>current+1);void rawApi<Account>('/v2/account').then(setAccount).catch(()=>setNotice('Action completed. Refresh Account to update its address status.'));}} onCancel={()=>{paymentTask.reject(Error('Payment closed. Resume pending payments from Account.'));setPaymentTask(undefined);}}/>}
     {review && <div className="cpReviewShade" role="presentation"><div className="cpReview" role="dialog" aria-modal="true" aria-label={review.title}><span className="cpEyebrow">REVIEW BEFORE APPLYING</span><h2>{review.title}</h2>{feeConfig?.enabled && ['Register agent','Create HTTP grant','Create ordered policy','Issue scoped key'].includes(review.title) && <p><strong>Fee: 5 MON + network gas</strong></p>}<ul>{review.summary.map((line,i)=><li key={i}>{line}</li>)}</ul><div className="cpActions"><button onClick={()=>setReview(undefined)}>Cancel</button><button className="cpPrimary" onClick={confirm} disabled={busy}>Confirm change</button></div></div></div>}
   </div>;
 }

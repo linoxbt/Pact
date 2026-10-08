@@ -38,7 +38,7 @@ export function ActionPayment({api,path,body,existing,onDone,onCancel}:{api:Cont
       intent??=await api<Payment>('/v2/fees/prepare',{path,body});setPayment(intent);
       if(intent.confirmed_at){onDone(await api(intent.path,intent.payload,'POST',intent.id));return;}
       // Never silently resend after a refresh or a lost confirmation response.
-      const saved=localStorage.getItem(`pact:payment:${intent.id}`);
+      let saved:string|null=null;try{saved=localStorage.getItem(`pact:payment:${intent.id}`);}catch{/* Wallet hash can be entered manually when browser storage is unavailable. */}
       if(saved){setHash(saved);await complete(intent,saved);return;}
       if(wallet.address.toLowerCase()!==intent.payer)throw Error('This pending payment belongs to your previous wallet. Use that wallet to pay or recover its transaction hash.');
       if(intent.chain_id!==activeNetwork.id)throw Error('Payment network differs from this Console. Do not send funds.');

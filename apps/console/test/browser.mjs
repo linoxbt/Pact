@@ -1,7 +1,7 @@
 // Real Console + API + PostgreSQL. Only Privy authentication is substituted;
 // this is not evidence of a successful hosted Privy sign-in.
 import assert from 'node:assert/strict';
-import {randomUUID,randomBytes} from 'node:crypto';
+import {randomUUID,randomBytes,createHash} from 'node:crypto';
 import {spawn} from 'node:child_process';
 import {mkdtemp,rm,writeFile} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
@@ -72,7 +72,11 @@ try {
   ws.addEventListener('message',e=>{const message=JSON.parse(e.data);if(message.id){pending.get(message.id)(message);pending.delete(message.id);}});
   const call=(method,params={})=>new Promise((resolve,reject)=>{const id=++sequence;pending.set(id,m=>m.error?reject(m.error):resolve(m.result));ws.send(JSON.stringify({id,method,params}));});
   const evaluate=async expression=>{const r=await call('Runtime.evaluate',{expression,returnByValue:true,awaitPromise:true});if(r.exceptionDetails)throw Error(JSON.stringify(r.exceptionDetails));return r.result.value;};
-  const waitFor=async expression=>{for(let i=0;i<100;i++){if(await evaluate(`Boolean(document.body && (${expression}))`))return;await new Promise(r=>setTimeout(r,100));}throw Error(`Timed out: ${expression}`);};
+  const waitFor=async expression=>{for(let i=0;i<300;i++){
+    try{if(await evaluate(`Boolean(document.body && (${expression}))`))return;}
+    catch(cause){if(!/Inspected target navigated|Execution context was destroyed|Cannot find context/.test(String(cause?.message)))throw cause;}
+    await new Promise(r=>setTimeout(r,100));
+  }throw Error(`Timed out: ${expression}`);};
   const click=async label=>{await waitFor(`[...document.querySelectorAll('button')].some(b=>b.textContent.trim()===${JSON.stringify(label)} && !b.disabled)`);return evaluate(`[...document.querySelectorAll('button')].find(b=>b.textContent.trim()===${JSON.stringify(label)})?.click()`);};
   const input=(label,value)=>evaluate(`(()=>{const e=[...document.querySelectorAll('label')].find(l=>l.querySelector('span')?.textContent===${JSON.stringify(label)}).querySelector('input,textarea,select');Object.getOwnPropertyDescriptor(Object.getPrototypeOf(e),'value').set.call(e,${JSON.stringify(value)});e.dispatchEvent(new Event('input',{bubbles:true}));e.dispatchEvent(new Event('change',{bubbles:true}));})()`);
   await call('Emulation.setDeviceMetricsOverride',{width:1440,height:1100,deviceScaleFactor:1,mobile:false});
@@ -148,7 +152,7 @@ try {
   await waitFor(`document.body.innerText.includes('Verification HTTP authority')`);
   assert.ok(await evaluate(`location.hash.startsWith('#agents/')`));
   await call('Page.reload');await waitFor(`document.querySelector('.dbResourceHero')?.innerText.includes('Pact enforcement verification')`);
-  await evaluate(`history.back()`);await waitFor(`document.querySelector('.dbDashboard')`);
+  await call('Runtime.evaluate',{expression:'history.back()'});await waitFor(`document.querySelector('.dbDashboard')`);
   await call('Emulation.setDeviceMetricsOverride',{width:390,height:844,deviceScaleFactor:1,mobile:true});
   assert.equal(await evaluate(`document.documentElement.scrollWidth>innerWidth`),false);
   await writeFile('/tmp/pact-dashboard-mobile.png',Buffer.from((await call('Page.captureScreenshot',{format:'png'})).data,'base64'));
@@ -173,7 +177,7 @@ try {
   apiContext.rpc.getTransactionReceipt=async()=>({status:'success',blockNumber:100n,blockHash:feeBlock});
   apiContext.rpc.getTransaction=async()=>{const row=(await database.query('SELECT * FROM pact_action_payments WHERE owner_id=$1 ORDER BY created_at DESC LIMIT 1',[owners[0].id])).rows[0];return {from:row.payer,to:row.treasury,value:BigInt(row.amount_wei),input:row.tx_data,blockHash:feeBlock};};
   await evaluate(`window.testFeeWallet=${JSON.stringify(owners[0].principalAddress)}`);
-  await click('Agents');await input('Agent name','Browser paid agent');await click('Review agent');await click('Confirm change');
+  await click('Agents');await input('Agent name',`Paid ${name}`);await click('Review agent');await click('Confirm change');
   await waitFor(`document.querySelector('[aria-label="Pay action fee"]')`);
   assert.ok(await evaluate(`document.querySelector('[aria-label="Pay action fee"]').innerText.includes('5 MON')`));
   await click('Cancel');
@@ -184,14 +188,29 @@ try {
   feeHead=110n;await click('Verify payment & finish');
   await waitFor(`!document.querySelector('[aria-label="Pay action fee"]')`);
   assert.equal(await evaluate(`window.testFeeTransactions`),1,'retry confirms without paying again');
-  assert.equal((await database.query("SELECT count(*)::int AS n FROM pact_connected_agents WHERE owner_id=$1 AND name='Browser paid agent'",[owners[0].id])).rows[0].n,1);
+  assert.equal((await database.query("SELECT count(*)::int AS n FROM pact_connected_agents WHERE owner_id=$1 AND name=$2",[owners[0].id,`Paid ${name}`])).rows[0].n,1);
   await click('Account');await waitFor(`document.body.innerText.includes('Completed')`);
+  // A paid key creation resumed from Account must display its one-time secret there.
+  await click('API keys');await input('Agent',agentId);await input('Key name',`Recovery ${name}`);
+  await click('Review and issue');await click('Confirm change');await click('Pay 5 MON');
+  await waitFor(`document.body.innerText.includes('Transaction submitted.')`);
+  await click('Close — finish from Account');await click('Account');await click('Resume action');
+  await click('Pay 5 MON');
+  await waitFor(`!document.querySelector('[aria-label="Pay action fee"]')`);
+  await waitFor(`document.querySelector('.cpSecret code')?.textContent.startsWith('pat_')`);
+  assert.equal(await evaluate(`window.testFeeTransactions`),2,'resuming uses the saved transaction without another transfer');
+  await waitFor(`[...document.querySelectorAll('.cpListRow')].some(row=>row.innerText.includes('key.create')&&row.innerText.includes('Completed'))`);
+  const recoveredKey=await evaluate(`document.querySelector('.cpSecret code').textContent`);
+  const storedKey=await database.query("SELECT token_hash FROM pact_integration_keys WHERE owner_id=$1 AND name=$2",[owners[0].id,`Recovery ${name}`]);
+  assert.equal(storedKey.rows.length,1);assert.equal(storedKey.rows[0].token_hash,createHash('sha256').update(recoveredKey).digest('hex'));
+  await click('I saved it');assert.equal(await evaluate(`document.querySelector('.cpSecret')`),null);
+
   await click('Sign out');await waitFor(`document.body.innerText.includes(${JSON.stringify(owners[1].principalAddress)})`);
   await click('Agents');await waitFor(`document.body.innerText.includes('Agent name')`);
   assert.equal(await evaluate(`document.body.innerText.includes(${JSON.stringify(name)})`),false);
   await click('Account');await waitFor(`document.body.innerText.includes(${JSON.stringify(owners[1].principalAddress)})`);
   assert.equal(await evaluate(`document.body.innerText.includes(${JSON.stringify(owners[0].principalAddress)})`),false);
-  console.log('PASS: real Console/API/database/gateway/upstream; registration, key issue, allow/deny, redaction, live activity, approval inspection/polling/expiry, revoke, partial-service recovery, independent workspace loads, sidebar persistence, passkey success/cancellation UI, account isolation, complete verification button workflow (Privy identity mocked locally)');
+  console.log('PASS: real Console/API/database/gateway/upstream; registration, key issue, allow/deny, redaction, live activity, approval inspection/polling/expiry, revoke, partial-service recovery, independent workspace loads, sidebar persistence, passkey success/cancellation UI, inline payment retry and resumed key secret, account isolation, complete verification button workflow (Privy identity mocked locally)');
 } finally {
   ws?.close();chrome.kill('SIGTERM');await vite.close();await api.close();await gateway.close();
   upstream.closeAllConnections();await new Promise(resolve=>upstream.close(resolve));await database.end();
