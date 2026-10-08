@@ -39,6 +39,10 @@ jobs:
         with:
           chrome-version: stable
           install-dependencies: true
+      - name: Public product experience
+        run: node apps/console/test/landing.mjs
+        env:
+          CHROME_PATH: ${{ steps.chrome.outputs.chrome-path }}
       - name: Console integration (isolated test identity)
         run: node apps/console/test/browser.mjs
         env:
