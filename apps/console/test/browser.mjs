@@ -50,7 +50,8 @@ const root=resolve(import.meta.dirname,'..');
 const vite=await createServer({root,configFile:false,server:{host:'127.0.0.1',port:4198,strictPort:true},
   resolve:{alias:{'@privy-io/react-auth':resolve(root,'test/browser/privy.ts')}},
   define:{'import.meta.env.VITE_PACT_API_URL':JSON.stringify('http://127.0.0.1:4197'),
-    'import.meta.env.VITE_PACT_GATEWAY_URL':JSON.stringify('http://127.0.0.1:4196')}});
+    'import.meta.env.VITE_PACT_GATEWAY_URL':JSON.stringify('http://127.0.0.1:4196'),
+    'import.meta.env.VITE_PRIVY_APP_ID':JSON.stringify('test-app')}});
 await vite.listen();
 const profile=await mkdtemp(join(tmpdir(),'pact-console-test-'));
 const chrome=spawn(process.env.CHROME_PATH??'/snap/bin/chromium',['--headless','--no-sandbox','--disable-dev-shm-usage',
@@ -77,10 +78,10 @@ try {
     catch(cause){if(!/Inspected target navigated|Execution context was destroyed|Cannot find context/.test(String(cause?.message)))throw cause;}
     await new Promise(r=>setTimeout(r,100));
   }throw Error(`Timed out: ${expression}`);};
-  const click=async label=>{await waitFor(`[...document.querySelectorAll('button')].some(b=>b.textContent.trim()===${JSON.stringify(label)} && !b.disabled)`);return evaluate(`[...document.querySelectorAll('button')].find(b=>b.textContent.trim()===${JSON.stringify(label)})?.click()`);};
+  const click=async label=>{await waitFor(`[...document.querySelectorAll('button, nav[aria-label="Console navigation"] a')].some(b=>b.textContent.trim()===${JSON.stringify(label)} && !b.disabled)`);return evaluate(`[...document.querySelectorAll('button, nav[aria-label="Console navigation"] a')].find(b=>b.textContent.trim()===${JSON.stringify(label)})?.click()`);};
   const input=(label,value)=>evaluate(`(()=>{const e=[...document.querySelectorAll('label')].find(l=>l.querySelector('span')?.textContent===${JSON.stringify(label)}).querySelector('input,textarea,select');Object.getOwnPropertyDescriptor(Object.getPrototypeOf(e),'value').set.call(e,${JSON.stringify(value)});e.dispatchEvent(new Event('input',{bubbles:true}));e.dispatchEvent(new Event('change',{bubbles:true}));})()`);
   await call('Emulation.setDeviceMetricsOverride',{width:1440,height:1100,deviceScaleFactor:1,mobile:false});
-  await call('Page.navigate',{url:'http://127.0.0.1:4198/test/browser/index.html'});
+  await call('Page.navigate',{url:'http://127.0.0.1:4198/app/overview'});
   await waitFor(`document.body.innerText.includes('Your agents, authority and activity.')`);
   await waitFor(`document.querySelector('.dbDashboard') && !document.body.innerText.includes('Loading your workspace')`);
   await click('Agents');await waitFor(`document.body.innerText.includes('Agent name')`);
