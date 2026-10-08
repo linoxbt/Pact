@@ -71,7 +71,7 @@ try {
   ws.addEventListener('message',e=>{const message=JSON.parse(e.data);if(message.id){pending.get(message.id)(message);pending.delete(message.id);}});
   const call=(method,params={})=>new Promise((resolve,reject)=>{const id=++sequence;pending.set(id,m=>m.error?reject(m.error):resolve(m.result));ws.send(JSON.stringify({id,method,params}));});
   const evaluate=async expression=>{const r=await call('Runtime.evaluate',{expression,returnByValue:true,awaitPromise:true});if(r.exceptionDetails)throw Error(JSON.stringify(r.exceptionDetails));return r.result.value;};
-  const waitFor=async expression=>{for(let i=0;i<100;i++){if(await evaluate(`Boolean(${expression})`))return;await new Promise(r=>setTimeout(r,100));}throw Error(`Timed out: ${expression}`);};
+  const waitFor=async expression=>{for(let i=0;i<100;i++){if(await evaluate(`Boolean(document.body && (${expression}))`))return;await new Promise(r=>setTimeout(r,100));}throw Error(`Timed out: ${expression}`);};
   const click=async label=>{await waitFor(`[...document.querySelectorAll('button')].some(b=>b.textContent.trim()===${JSON.stringify(label)} && !b.disabled)`);return evaluate(`[...document.querySelectorAll('button')].find(b=>b.textContent.trim()===${JSON.stringify(label)})?.click()`);};
   const input=(label,value)=>evaluate(`(()=>{const e=[...document.querySelectorAll('label')].find(l=>l.querySelector('span')?.textContent===${JSON.stringify(label)}).querySelector('input,textarea,select');Object.getOwnPropertyDescriptor(Object.getPrototypeOf(e),'value').set.call(e,${JSON.stringify(value)});e.dispatchEvent(new Event('input',{bubbles:true}));e.dispatchEvent(new Event('change',{bubbles:true}));})()`);
   await call('Page.navigate',{url:'http://127.0.0.1:4198/test/browser/index.html'});
@@ -134,6 +134,9 @@ try {
   assert.ok(await evaluate(`document.body.innerText.includes('Replacement upstream secret')`));
   assert.equal((await database.query('SELECT count(*)::int count FROM pact_services WHERE agent_id=$1 AND name=$2',
     [agentId,'Credential failure recovery'])).rows[0].count,1);
+  await click('Overview');await click('Run live enforcement check');
+  await waitFor(`document.body.innerText.includes('Verification passed')`);
+  assert.equal(await evaluate(`document.body.innerText.includes('Cleanup needs attention')`),false);
   await evaluate(`document.querySelector('[aria-label="Collapse sidebar"]').click()`);
   assert.equal(await evaluate(`localStorage.getItem('pact:sidebar-collapsed')`),'true');
   await click('Account');await waitFor(`document.body.innerText.includes(${JSON.stringify(owners[0].principalAddress)})`);
@@ -142,7 +145,7 @@ try {
   assert.equal(await evaluate(`document.body.innerText.includes(${JSON.stringify(name)})`),false);
   await click('Account');await waitFor(`document.body.innerText.includes(${JSON.stringify(owners[1].principalAddress)})`);
   assert.equal(await evaluate(`document.body.innerText.includes(${JSON.stringify(owners[0].principalAddress)})`),false);
-  console.log('PASS: real Console/API/database/gateway/upstream; registration, key issue, allow/deny, redaction, live activity, approval inspection/polling/expiry, revoke, partial-service recovery, independent workspace loads, sidebar persistence, account isolation (Privy identity mocked locally)');
+  console.log('PASS: real Console/API/database/gateway/upstream; registration, key issue, allow/deny, redaction, live activity, approval inspection/polling/expiry, revoke, partial-service recovery, independent workspace loads, sidebar persistence, account isolation, complete verification button workflow (Privy identity mocked locally)');
 } finally {
   ws?.close();chrome.kill('SIGTERM');await vite.close();await api.close();await gateway.close();
   upstream.closeAllConnections();await new Promise(resolve=>upstream.close(resolve));await database.end();

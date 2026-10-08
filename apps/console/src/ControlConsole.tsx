@@ -1,7 +1,9 @@
+import { activeNetwork, networkNotice } from './networks.js';
 import { useEffect, useRef, useState } from 'react';
 import { getAccessToken, useConnectWallet, useLinkWithPasskey, usePrivy, useWallets } from '@privy-io/react-auth';
 import { Brand, Icon } from './ui.js';
 import './control.css';
+import { VerificationPanel } from './VerificationPanel.js';
 
 const apiOrigin = import.meta.env.VITE_PACT_API_URL as string | undefined;
 const gatewayOrigin = import.meta.env.VITE_PACT_GATEWAY_URL as string | undefined;
@@ -293,7 +295,7 @@ export function ControlConsole() {
     `${gatewayBase}/v2/proxy/AGENT_ID/SERVICE_ID/health`;
   return <div className={`cpShell ${sidebarCollapsed ? 'cpCollapsed' : ''}`}>
     <aside className={`cpSidebar ${menuOpen ? 'open' : ''}`}><div className="cpBrand"><Brand/><button className="cpClose" onClick={() => setMenuOpen(false)} aria-label="Close menu">×</button></div>
-      <div className="cpWorkspaceIdentity"><span className="cpWorkspaceAvatar">P</span><div className="cpWorkspaceIdentityText">Pact workspace<small><i className="cpStatusDot"/> Monad testnet</small></div><span className="cpWorkspaceVersion">01</span></div>
+      <div className="cpWorkspaceIdentity"><span className="cpWorkspaceAvatar">P</span><div className="cpWorkspaceIdentityText">Pact workspace<small><i className="cpStatusDot"/> {activeNetwork.name}</small></div><span className="cpWorkspaceVersion">01</span></div>
       <span className="cpNavLabel">WORKSPACE</span><nav id="pact-console-nav" aria-label="Console navigation">{nav.map(item =>
         <button key={item.id} className={view === item.id ? 'active' : ''} onClick={() => choose(item.id)}
           aria-current={view === item.id ? 'page' : undefined} aria-label={item.label}
@@ -329,7 +331,7 @@ export function ControlConsole() {
         <p><a href="/legacy">Open existing Monad grants ↗</a></p></section>}
       {authenticated && controlStatus === 'ready' && account?.verificationStatus === 'unverified' && <section className="cpCard" role="status"><span className="cpEyebrow">ACCOUNT SETUP</span><h2>Your account address is being assigned.</h2><p>Agent and HTTP grant management will be available when this finishes.</p><button onClick={() => setConnectionAttempt(value => value + 1)}>Retry account setup</button></section>}
       {authenticated && controlStatus === 'ready' && account && <>
-      {view === 'overview' && <><div className="cpStats">{[
+      {view === 'overview' && <><VerificationPanel control={api} onComplete={refresh}/><div className="cpStats">{[
         ['Agents',agents.length,'agent'],['Endpoints',endpoints.length,'globe'],
         ['Active keys',activeKeyCount,'key'],
         ['Events',activity.length,'activity'],

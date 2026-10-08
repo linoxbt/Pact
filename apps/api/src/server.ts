@@ -19,6 +19,7 @@ import { registerRunRoutes } from './runs.js';
 import { registerBillingRoutes, type BillingConfig } from './billing.js';
 import type { CredentialCipher, DeploymentSecretCipher, EvidenceStore } from '@pact/security';
 import { registerControlPlaneRoutes } from './control-plane.js';
+import { registerVerificationRoutes } from './verification.js';
 
 export type ApiContext = Readonly<{
   database: Database;
@@ -84,17 +85,25 @@ export async function createApi(ctx: ApiContext): Promise<FastifyInstance> {
   app.get('/health', async () => ({ status: 'ok' }));
   app.get('/v1/config', async request => {
     const input=z.object({principal:address.optional()}).strict().parse(request.query);
-    let account=ctx.pact.addresses.account;
-    let accountPrincipal=await ctx.rpc.readContract({address:account,abi:PactAccountAbi,functionName:'principal'});
-    if (input.principal && input.principal.toLowerCase()!==accountPrincipal.toLowerCase()) {
-      if (!ctx.accountFactory) error(409,'ACCOUNT_FACTORY_UNCONFIGURED');
+    const chainId=await ctx.rpc.getChainId();
+    if (!input.principal) return respond({chainId,registry:ctx.pact.addresses.registry,
+      account:null,accountPrincipal:null,accountFactory:ctx.accountFactory??null,accountMode:'per_user'});
+    let account: Address='0x0000000000000000000000000000000000000000';
+    if (ctx.accountFactory) {
       account=await ctx.rpc.readContract({address:ctx.accountFactory!,abi:PactAccountFactoryAbi,
         functionName:'accountOf',args:[input.principal]});
-      if (account==='0x0000000000000000000000000000000000000000') error(409,'DEPLOY_ACCOUNT_FIRST');
-      accountPrincipal=await ctx.rpc.readContract({address:account,abi:PactAccountAbi,functionName:'principal'});
-      if (accountPrincipal.toLowerCase()!==input.principal.toLowerCase()) error(409,'ACCOUNT_OWNER_MISMATCH');
     }
-    return respond({chainId:await ctx.rpc.getChainId(),registry:ctx.pact.addresses.registry,account,accountPrincipal});
+    // Historical wallet-backed accounts remain accessible only for their explicitly requested owner.
+    if (account==='0x0000000000000000000000000000000000000000' &&
+        ctx.pact.addresses.account!=='0x0000000000000000000000000000000000000000') {
+      const legacyPrincipal=await ctx.rpc.readContract({address:ctx.pact.addresses.account,
+        abi:PactAccountAbi,functionName:'principal'});
+      if (legacyPrincipal.toLowerCase()===input.principal.toLowerCase()) account=ctx.pact.addresses.account;
+    }
+    if (account==='0x0000000000000000000000000000000000000000') error(409,'DEPLOY_ACCOUNT_FIRST');
+    const accountPrincipal=await ctx.rpc.readContract({address:account,abi:PactAccountAbi,functionName:'principal'});
+    if (accountPrincipal.toLowerCase()!==input.principal.toLowerCase()) error(409,'ACCOUNT_OWNER_MISMATCH');
+    return respond({chainId,registry:ctx.pact.addresses.registry,account,accountPrincipal,accountMode:'per_user'});
   });
   app.get('/v1/agent/me', async request => {
     const session = await ctx.auth.authenticate(request.headers.authorization, 'read');
@@ -346,6 +355,9 @@ export async function createApi(ctx: ApiContext): Promise<FastifyInstance> {
   registerAgentRoutes(app, ctx);
   registerRunRoutes(app, ctx);
   registerBillingRoutes(app, ctx);
-  if (ctx.ownerAuth) registerControlPlaneRoutes(app, ctx);
+  if (ctx.ownerAuth) {
+    registerControlPlaneRoutes(app, ctx);
+    registerVerificationRoutes(app, ctx);
+  }
   return app;
 }

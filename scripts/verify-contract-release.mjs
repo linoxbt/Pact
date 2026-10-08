@@ -9,6 +9,11 @@ const contracts={CommitmentLedger:'ledger',AuthorityRegistry:'registry',PactAcco
   PactAccountFactory:'accountFactory',ObligationManager:'manager',SettlementVault:'vault',ReceiptRegistry:'receipts'};
 const artifacts={};
 for(const [name,field] of Object.entries(contracts)) {
+  if(name==='PactAccount' && manifest.accountMode==='per_user_factory') {
+    assert.equal(manifest.account,'0x0000000000000000000000000000000000000000');
+    assert.equal(manifest.principal,null);
+    continue;
+  }
   const artifact=JSON.parse(readFileSync(`packages/contracts/out/${name}.sol/${name}.json`,'utf8'));
   artifacts[name]=artifact;
   const actual=await rpc.getCode({address:manifest[field]});
@@ -29,6 +34,7 @@ const links={CommitmentLedger:{registry:'registry',obligationManager:'manager'},
   ObligationManager:{registry:'registry',ledger:'ledger',vault:'vault',receipts:'receipts'},
   SettlementVault:{manager:'manager'},ReceiptRegistry:{manager:'manager'}};
 for(const [name,fields] of Object.entries(links)) for(const [getter,target] of Object.entries(fields)) {
+  if(name==='PactAccount' && manifest.accountMode==='per_user_factory') continue;
   const abi=artifacts[name].abi;
   const actualGetter=abi.some(x=>x.type==='function' && x.name===getter)?getter:
     getter==='manager'?'obligationManager':getter;

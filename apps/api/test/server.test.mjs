@@ -41,6 +41,30 @@ function fixture() {
   return ctx;
 }
 
+test('public config never assigns a shared principal; requested factory account must match owner', async()=>{
+  const ctx=fixture();
+  ctx.pact.addresses.registry=ledger;
+  ctx.accountFactory=manager;
+  let reads=0;
+  ctx.rpc.readContract=async({functionName,args,address})=>{
+    reads++;
+    if(functionName==='accountOf') {assert.equal(args[0],principal);return account;}
+    assert.equal(address,account);return principal;
+  };
+  const app=await createApi(ctx);
+  try {
+    const publicConfig=await app.inject({method:'GET',url:'/v1/config'});
+    assert.equal(publicConfig.statusCode,200);
+    assert.equal(publicConfig.json().accountPrincipal,null);
+    assert.equal(publicConfig.json().account,null);
+    assert.equal(reads,0);
+    const own=await app.inject({method:'GET',url:`/v1/config?principal=${principal}`});
+    assert.equal(own.statusCode,200);assert.equal(own.json().accountPrincipal,principal);
+    ctx.rpc.readContract=async({functionName})=>functionName==='accountOf'?account:agent;
+    assert.equal((await app.inject({method:'GET',url:`/v1/config?principal=${principal}`})).statusCode,409);
+  } finally {await app.close();}
+});
+
 test('agent quote is scoped to its authenticated grant', async () => {
   const app = await createApi(fixture());
   try {

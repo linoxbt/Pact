@@ -3,6 +3,13 @@
 Baseline: `1bbd0026b49ec7cbf05555935c4e4eeff5c9dea7`.
 Status is evidence-based: a source fix is not a verified deployment.
 
+## Follow-up: mainnet and live verification (8 October)
+
+- Removed the legacy API's implicit shared principal/account response. Public configuration now returns null account/principal; a requested owner resolves to their factory account, with an explicit owner match check. Historical testnet manifests retain their immutable deployment facts and are not onboarding defaults.
+- Added factory-only mainnet deployment: no shared principal and no bootstrap user account. Mainnet fork simulation passed (six contracts and configuration, estimated 1.567959754 MON at observed prices). Broadcast remains pending deployer funding; no mainnet deployment is claimed.
+- Added the Console enforcement verification flow and a reusable TypeScript SDK helper. Real local HTTP/database integration and browser checks passed allow/deny, zero upstream forwarding for denied/pending requests, protected credential injection, response redaction, exact approval, key rotation, grant/key revocation and activity request attribution. Browser identity remains an explicit local Privy fixture.
+- Hosted identity testing requires a signed-in user. A provider-backed model run requires a dedicated provider credential; this Codex session supplies no reusable API key. AWS configuration and recovery remain operator gates.
+
 ## Sequence
 
 1. Contract authorization and settlement invariants; SDK credential isolation.

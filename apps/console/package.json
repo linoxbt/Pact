@@ -12,6 +12,7 @@
   "dependencies": {
     "@pact/abis": "workspace:*",
     "@pact/policies": "workspace:*",
+    "@pact/sdk-ts": "workspace:*",
     "@privy-io/react-auth": "3.45.0",
     "react": "19.3.0",
     "react-dom": "19.3.0",

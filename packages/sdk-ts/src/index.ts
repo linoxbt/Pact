@@ -8,6 +8,7 @@ import { hashObligationTerms, hashTransferIntent, obligationTermsTypes, pactDoma
 import { verifyObligationReservation, verifyReceiptAnchor, verifyTransferReservation } from '@pact/proofs';
 export { PactHttpClient } from './http.js';
 export { PactControlClient } from './control.js';
+export { verifyGatewayEnforcement, type VerificationOptions } from './verification.js';
 
 export type PactAddresses = Readonly<{
   registry: Address;

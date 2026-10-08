@@ -27,6 +27,7 @@ while (running) {
       await database.query(`DELETE FROM pact_policy_usage WHERE period_start<extract(epoch from now())-604800`);
       await database.query(`DELETE FROM pact_address_challenges WHERE expires_at<now()-interval '1 day'`);
       await database.query(`DELETE FROM pact_ingress_limits WHERE period_start<now()-interval '1 hour'`);
+      await database.query(`DELETE FROM pact_verification_probes WHERE expires_at<now()-interval '30 days'`);
       await database.query(`DELETE FROM pact_audit_events WHERE created_at<now()-interval '365 days'`);
       await database.query(`DELETE FROM pact_sessions WHERE expires_at<now()-interval '1 day'`);
       await database.query(`DELETE FROM pact_challenges WHERE expires_at<now()-interval '1 day'`);

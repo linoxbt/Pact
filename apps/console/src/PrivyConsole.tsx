@@ -1,15 +1,10 @@
 import { getAccessToken, PrivyProvider, useLinkWithPasskey, usePrivy, useWallets } from '@privy-io/react-auth';
 import { request } from './api.js';
-import { defineChain } from 'viem';
+import { activeNetwork, monadMainnet, monadTestnet } from './networks.js';
 import { App, type WalletAdapter } from './main.js';
 import { ControlConsole } from './ControlConsole.js';
 
 const appId = import.meta.env.VITE_PRIVY_APP_ID as string | undefined;
-const monadTestnet = defineChain({ id: 10143, name: 'Monad Testnet',
-  nativeCurrency: { name: 'Monad', symbol: 'MON', decimals: 18 },
-  rpcUrls: { default: { http: ['https://testnet-rpc.monad.xyz'] } },
-  blockExplorers: { default: { name: 'MonadVision', url: 'https://testnet.monadvision.com' } },
-  testnet: true });
 
 function WalletConsole() {
   const { ready, authenticated, user, login, connectWallet, logout } = usePrivy();
@@ -33,7 +28,7 @@ function WalletConsole() {
 export default function PrivyConsole() {
   if (!appId) return <p role="alert">Pact sign in is unavailable: VITE_PRIVY_APP_ID is missing.</p>;
   return <PrivyProvider appId={appId} config={{ loginMethods: ['email', 'wallet', 'passkey'],
-    supportedChains: [monadTestnet], defaultChain: monadTestnet,
+    supportedChains: [monadMainnet, monadTestnet], defaultChain: activeNetwork,
     embeddedWallets: { ethereum: { createOnLogin: 'all-users' } },
     appearance: { theme: 'light', accentColor: '#245342', showWalletLoginFirst: false, walletChainType: 'ethereum-only' } }}><WalletConsole/></PrivyProvider>;
 }
