@@ -27,7 +27,7 @@ export function Icon({ name = 'arrow', size = 20 }: { name?: string; size?: numb
 }
 
 export function Brand() {
-  return <a className="brand" href="/" aria-label="Pact home"><svg width="30" height="32" viewBox="0 0 30 32" fill="none" aria-hidden="true"><path d="m15 1 14 8v14l-14 8L1 23V9L15 1Z" stroke="currentColor" strokeWidth="1.6"/><path d="m15 8 8 4.5v7L15 24l-8-4.5v-7L15 8Z" fill="currentColor"/><path d="M15 8v16m-8-11.5 16 7m0-7-16 7" stroke="var(--brand-cut,#f5f6f0)" strokeWidth="1.2"/></svg><span>pact<span className="brandDot">.</span></span></a>;
+  return <a className="brand" href="/" aria-label="Pact home"><svg width="30" height="32" viewBox="0 0 30 32" fill="none" aria-hidden="true"><path d="m15 1 14 8v14l-14 8L1 23V9L15 1Z" stroke="currentColor" strokeWidth="1.6"/><path d="m15 8 8 4.5v7L15 24l-8-4.5v-7L15 8Z" fill="currentColor"/><path d="M15 8v16m-8-11.5 16 7m0-7-16 7" stroke="var(--brand-cut,#f5f6f0)" strokeWidth="1.2"/></svg><span>pact</span></a>;
 }
 
 export function CodeBlock({ code, label = 'Terminal' }: { code: string; label?: string }) {
