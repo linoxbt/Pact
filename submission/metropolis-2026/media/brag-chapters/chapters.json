@@ -1,0 +1,62 @@
+[
+  {
+    "chapter": 1,
+    "seconds": 18,
+    "label": "THE PROBLEM",
+    "title": "An agent can call an API. Who authorized it?"
+  },
+  {
+    "chapter": 2,
+    "seconds": 18,
+    "label": "THE PRODUCT",
+    "title": "Pact puts a boundary before the action."
+  },
+  {
+    "chapter": 3,
+    "seconds": 18,
+    "label": "CONNECT AN AGENT",
+    "title": "Agent → endpoint → protected secret"
+  },
+  {
+    "chapter": 4,
+    "seconds": 18,
+    "label": "GATEWAY DECISION",
+    "title": "Allowed requests reach the upstream."
+  },
+  {
+    "chapter": 5,
+    "seconds": 18,
+    "label": "DENIAL",
+    "title": "A forbidden method stops here."
+  },
+  {
+    "chapter": 6,
+    "seconds": 18,
+    "label": "ACTIVITY",
+    "title": "Every attempt has a reason."
+  },
+  {
+    "chapter": 7,
+    "seconds": 18,
+    "label": "MONAD AUTHORITY",
+    "title": "Reserve exact capacity on testnet."
+  },
+  {
+    "chapter": 8,
+    "seconds": 18,
+    "label": "OBLIGATION",
+    "title": "From terms to settlement."
+  },
+  {
+    "chapter": 9,
+    "seconds": 18,
+    "label": "CHECKABLE RECEIPT",
+    "title": "Receipt 1 verifies against Monad testnet."
+  },
+  {
+    "chapter": 10,
+    "seconds": 18,
+    "label": "TRY PACT",
+    "title": "Open source. Testnet evidence."
+  }
+]

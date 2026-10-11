@@ -1,0 +1,13 @@
+{
+  "name": "pact-metropolis-media",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "node build.mjs && node build-video.mjs",
+    "lint:video": "hyperframes lint brag-chapters/01"
+  },
+  "dependencies": {
+    "hyperframes": "0.8.149",
+    "pptxgenjs": "4.0.1"
+  }
+}

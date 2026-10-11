@@ -1,0 +1,10 @@
+node_modules/
+brag-chapters/*/chapter.mp4
+brag-chapters/*/test.mp4
+brag-chapters/*/screen.png
+brag-chapters/*/.chapter.hf-transaction-*/
+*-concat.txt
+*-silent.mp4
+explorer-frames.txt
+explorer-interaction.mp4
+receipt.png

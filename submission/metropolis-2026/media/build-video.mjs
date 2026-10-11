@@ -1,0 +1,25 @@
+import fs from 'node:fs';
+import path from 'node:path';
+
+const here=import.meta.dirname;
+const out=path.join(here,'brag-chapters');
+const scenes=[
+ ['THE PROBLEM','An agent can call an API. Who authorized it?','A provider key or wallet gives the agent broad power. A prompt cannot enforce a spend limit or explain a decision.','live-product.png'],
+ ['THE PRODUCT','Pact puts a boundary before the action.','Register the agent and operation. The owner defines a grant; ordered policies decide each request.','docs.png'],
+ ['CONNECT AN AGENT','Agent → endpoint → protected secret','The developer registers a GET operation. Pact stores the upstream credential; the agent only receives a scoped Pact key.','docs.png'],
+ ['GATEWAY DECISION','Allowed requests reach the upstream.','Pact authenticates the key, checks the grant and rule order, then forwards an allowed request with the protected credential.','live-product.png'],
+ ['DENIAL','A forbidden method stops here.','A DELETE or unregistered path is denied before forwarding. The upstream service never receives it.','docs.png'],
+ ['ACTIVITY','Every attempt has a reason.','The Console records agent, operation, matched rule, request ID and outcome. Private HTTP activity is an operator log.','live-product.png'],
+ ['MONAD AUTHORITY','Reserve exact capacity on testnet.','An owner-specific grant bounds agent, token, recipient, per-action amount and aggregate capacity. Owner approval applies above threshold.',null],
+ ['OBLIGATION','From terms to settlement.','The shipped testnet path covers one funded milestone: signed terms, escrow, evidence, named verifier verdict and settlement.',null],
+ ['CHECKABLE RECEIPT','Receipt 1 verifies against Monad testnet.','The public API reports verification.valid = true. The October 8 Railway-agent run is historical; the actor expired and its grants were revoked.','explorer.png'],
+ ['TRY PACT','Open source. Testnet evidence.','Explore the product, docs and public receipt. TypeScript, Python, curl and MCP integrations reproduce the API boundary.','live-product.png'],
+];
+const esc=s=>String(s).replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;');
+for(let i=0;i<scenes.length;i++){
+ const [label,title,body,img]=scenes[i];const d=path.join(out,String(i+1).padStart(2,'0'));fs.mkdirSync(d,{recursive:true});if(img)fs.copyFileSync(path.join(here,img),path.join(d,'screen.png'));
+ const html=`<!doctype html><html><head><meta charset="utf-8"><style>*{box-sizing:border-box}html,body{margin:0;width:1280px;height:720px;font-family:Arial,sans-serif;background:#203d32;color:#fff}#root{width:1280px;height:720px;position:relative;overflow:hidden;background:radial-gradient(circle at 100% 0%,#406850 0%,#203d32 55%)}.eyebrow{position:absolute;left:70px;top:56px;font-size:16px;letter-spacing:.19em;color:#b9e7c6;font-weight:700}.title{position:absolute;left:70px;top:122px;width:1120px;font-size:${title.length>37?53:66}px;line-height:1.07;letter-spacing:-.045em;font-weight:700}.body{position:absolute;left:70px;top:290px;width:${img?'615':'1020'}px;font-size:${img?'29':'35'}px;line-height:1.34;color:#e9f3e9}.screen{position:absolute;right:58px;bottom:78px;width:500px;height:315px;object-fit:cover;object-position:top left;border:3px solid #b9e7c6;border-radius:12px;box-shadow:0 20px 60px #061c1470}.number{position:absolute;left:70px;bottom:55px;font-size:15px;letter-spacing:.16em;color:#a5c9ab}.url{position:absolute;right:55px;bottom:55px;font-size:13px;color:#a5c9ab}.orb{position:absolute;right:-65px;top:-115px;width:410px;height:410px;border:2px solid #b9e7c640;border-radius:50%}.orb2{position:absolute;right:45px;top:-30px;width:220px;height:220px;border:2px solid #b9e7c640;border-radius:50%}</style></head><body><div id="root" data-composition-id="main" data-no-timeline data-start="0" data-duration="18" data-width="1280" data-height="720"><div id="orb" class="clip orb" data-start="0" data-duration="18" data-track-index="0"></div><div id="orb2" class="clip orb2" data-start="0" data-duration="18" data-track-index="1"></div><div id="eyebrow" class="clip eyebrow" data-start="0" data-duration="18" data-track-index="2">${esc(label)}</div><div id="title" class="clip title" data-start="0" data-duration="18" data-track-index="3">${esc(title)}</div><div id="bodycopy" class="clip body" data-start="0" data-duration="18" data-track-index="4">${esc(body)}</div>${img?'<img id="screen" class="clip screen" data-start="0" data-duration="18" data-track-index="5" src="screen.png">':''}<div id="number" class="clip number" data-start="0" data-duration="18" data-track-index="6">PACT / ${String(i+1).padStart(2,'0')} OF 10 · MONAD TESTNET</div><div id="url" class="clip url" data-start="0" data-duration="18" data-track-index="7">pact-protocol-monad.alemzdelight.workers.dev</div></div></body></html>`;
+ fs.writeFileSync(path.join(d,'index.html'),html);
+}
+fs.writeFileSync(path.join(out,'chapters.json'),JSON.stringify(scenes.map((s,i)=>({chapter:i+1,seconds:18,label:s[0],title:s[1]})),null,2));
+console.log('Built ten 18-second Brag/Hyperframes chapters');

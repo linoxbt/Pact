@@ -1,0 +1,5 @@
+# Brag / Hyperframes composition brief
+
+Pact, Monad Metropolis 2026. Create ten caption-led 18-second chapters (1280×720) and join them into a three-minute demo. The ten-chapter storyboard and exact captions are in `build-video.mjs` and `DEMO_VIDEO.md`. Use Pact's existing forest-green, mint and cream visual identity. Show actual public product, docs and Explorer captures where possible. Use recorded October 8 testnet evidence only with a historical label. No fresh private activity is invented. No narration is synthesized. A quiet professional music bed supports the captions. Keep the on-screen copy legible and the linked evidence checkable.
+
+Source: live product, public docs and Explorer screenshots in this directory; repository verification record `docs/verification/2026-10-08-live-agent.md`. The Brag workflow normally targets a short promo, but the user explicitly requested a three-minute demo, so the storyboard is assembled from ten short chapters. Each chapter is rendered with Hyperframes, then FFmpeg joins the ten exports.

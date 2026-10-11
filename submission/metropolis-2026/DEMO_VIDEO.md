@@ -1,22 +1,27 @@
-# Demo video — maximum 3 minutes
+# Pact demo video · 3:00
 
-**Goal:** show the working product rather than slides or source code. Use an account and testnet resources that you control. Refresh the expiring test agent/upstream before recording; the October 8 historical run is not a live interactive demo anymore. Prepare and fund the account before capture, because creation payments and chain finality can outlast a three-minute recording. Keep each cut honest: show real saved records and successful requests, not simulated UI states.
+**File:** `Pact-Demo-3min.mp4`. Ten 18-second Brag/Hyperframes chapters are joined into one caption-led film with music. The script below can be recorded separately as a human voiceover; the rendered film does not use a synthetic narrator.
 
-| Time | Picture and action | Suggested narration |
+The film shows captures of the public live product, documentation, Explorer and the recorded October 8 testnet evidence. It does **not** represent a newly authenticated Console run. The historical test actor expired and its grants were revoked. For a fresh gateway walkthrough, use `ENTRY.md` and `docs/verification/2026-10-08-live-agent.md`.
+
+| Time | Visual | Spoken script |
 | --- | --- | --- |
-| 0:00–0:20 | Open live Pact site; sign in to the prepared Console. Show Overview with the deployed agent and its recent activity. | “Pact is an enforceable authority layer for autonomous agents. This is the live testnet product and an agent we deployed.” |
-| 0:20–0:45 | Open agent detail, registered service and enabled GET endpoint. Show grant owner, agent, currency, amount bound, and policy rule order. Keep secrets hidden. | “The owner grants bounded authority. The agent gets a scoped Pact key and can call only registered operations under these ordered rules.” |
-| 0:45–1:15 | Run a real allowed GET through the gateway, then a forbidden method or path. Show response codes and the local/upstream hit counter if available. | “Pact evaluates before forwarding. The allowed request reaches the service. The denied request stops at the gateway, so the service never sees it.” |
-| 1:15–1:40 | Open Live Activity and both request details. Show agent attribution, matched rule, reason, request ID, upstream status, and policy decision trace. | “Both attempts appear in live activity with the exact reason for the decision. The activity is an operator record; it is not a blockchain proof.” |
-| 1:40–2:00 | Show approval threshold and one owner-approved testnet action or recorded approval. Show the exact grant and reservation in the live record. | “For value-moving actions, the onchain grant reserves exact capacity. Above-threshold execution requires an owner approval.” |
-| 2:00–2:30 | Open public Explorer/receipt and the linked Monad testnet transactions: reserve, create/fund obligation, verdict, settle. | “A funded obligation records terms, evidence and a named verifier verdict. Settlement produces this receipt root, which can be checked against Monad.” |
-| 2:30–2:50 | Revoke the scoped agent key and retry the same gateway call; show authentication failure. | “Revocation cuts off the agent credential. It cannot keep using the integration after the owner removes access.” |
-| 2:50–3:00 | Return to live product URL and repo/docs on screen. | “Developers can reproduce the flow with the TypeScript or Python SDK, MCP tools, and a local demo upstream.” |
+| 0:00–0:18 | Live product and the problem | “An autonomous agent can call an API or move funds. Who authorized that action, and what may it commit?” |
+| 0:18–0:36 | Developer documentation | “Pact puts an enforceable boundary before the action. Register an agent and operation. The owner supplies a grant; ordered policies decide each request.” |
+| 0:36–0:54 | Connect workflow | “Register an endpoint and put the provider credential in Pact’s vault. The agent receives a scoped Pact key, never the upstream secret.” |
+| 0:54–1:12 | Gateway decision | “The gateway authenticates the key, checks the grant and policy, then forwards an allowed request with the protected credential.” |
+| 1:12–1:30 | Denial | “A forbidden method or path is rejected before forwarding. The upstream never receives a denied request.” |
+| 1:30–1:48 | Activity trace | “The private Activity view records agent, operation, matched rule, reason, request ID and outcome. HTTP events are operator records, not blockchain receipts.” |
+| 1:48–2:06 | Monad authority | “Owner-specific Monad testnet grants limit agent, token, recipient, per-action amount and total capacity. Contracts reserve exact capacity and enforce approval thresholds.” |
+| 2:06–2:24 | Obligation lifecycle | “The implemented obligation path covers one funded milestone: signed terms, escrow, evidence, named verifier verdict and settlement.” |
+| 2:24–2:42 | Public Explorer and receipt | “A Railway agent completed this flow on October eighth. Its receipt root checks against Monad testnet. That run is historical; the actor later expired and grants were revoked.” |
+| 2:42–3:00 | Product, SDK, MCP and source | “Pact is open source. Reproduce the boundary with the Console, TypeScript or Python SDK, curl, MCP tools and the local demo upstream.” |
 
-## Capture notes
+## Fresh hands-on recording path
 
-- Use Monad **testnet** labels wherever chain results appear. The test token is valueless.
-- An existing receipt may be shown alongside a newly recorded HTTP run; say when they are from different runs. Never imply a new HTTP event is anchored unless its receipt is actually onchain.
-- Crop or blur one-time API key secrets, Privy prompts, email addresses, provider credentials, headers, and sensitive request bodies.
-- If the preconfigured grant was revoked or the agent task expired, refresh/reissue it and verify a real request before recording. Do not splice a simulated success into the demo.
-- Record at 1080p, keep browser zoom readable, use captions, and export at 2:55 or shorter to leave margin.
+1. Create an agent, GET endpoint, grant, ordered policy and scoped key on Monad testnet. The current fee is 5 testnet MON per core action, plus gas. Hide the one-time key secret.
+2. Call an allowed GET through Pact, then a forbidden method/path. Show the denial and verify no upstream hit for the denied request.
+3. Open both Activity records and the decision traces. Revoke the key and show subsequent authentication failure.
+4. Open public receipt 1 and linked Monad testnet transactions. State that this is the earlier October 8 obligation unless a new chain run was completed.
+
+Do not splice historical private events into a new account view or imply the receipt proves real-world delivery.
