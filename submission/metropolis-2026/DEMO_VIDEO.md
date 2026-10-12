@@ -1,21 +1,21 @@
 # Pact demo video · 3:00
 
-**File:** `Pact-Demo-3min.mp4`. Ten 18-second Brag/Hyperframes chapters are joined into one caption-led film with music. The script below can be recorded separately as a human voiceover; the rendered film does not use a synthetic narrator.
+**File:** `Pact-Demo-3min.mp4`. This is the single finished 3:00 film: ten animated Brag/Hyperframes scenes with generated narration, music, and timed touch sounds. The voice scripts are in `media/brag-visa-inspired/voice/`.
 
 The film shows captures of the public live product, documentation, Explorer and the recorded October 8 testnet evidence. It does **not** represent a newly authenticated Console run. The historical test actor expired and its grants were revoked. For a fresh gateway walkthrough, use `ENTRY.md` and `docs/verification/2026-10-08-live-agent.md`.
 
-| Time | Visual | Spoken script |
+| Time | Visual | Narration topic |
 | --- | --- | --- |
-| 0:00–0:18 | Live product and the problem | “An autonomous agent can call an API or move funds. Who authorized that action, and what may it commit?” |
-| 0:18–0:36 | Developer documentation | “Pact puts an enforceable boundary before the action. Register an agent and operation. The owner supplies a grant; ordered policies decide each request.” |
-| 0:36–0:54 | Connect workflow | “Register an endpoint and put the provider credential in Pact’s vault. The agent receives a scoped Pact key, never the upstream secret.” |
-| 0:54–1:12 | Gateway decision | “The gateway authenticates the key, checks the grant and policy, then forwards an allowed request with the protected credential.” |
-| 1:12–1:30 | Denial | “A forbidden method or path is rejected before forwarding. The upstream never receives a denied request.” |
-| 1:30–1:48 | Activity trace | “The private Activity view records agent, operation, matched rule, reason, request ID and outcome. HTTP events are operator records, not blockchain receipts.” |
-| 1:48–2:06 | Monad authority | “Owner-specific Monad testnet grants limit agent, token, recipient, per-action amount and total capacity. Contracts reserve exact capacity and enforce approval thresholds.” |
-| 2:06–2:24 | Obligation lifecycle | “The implemented obligation path covers one funded milestone: signed terms, escrow, evidence, named verifier verdict and settlement.” |
-| 2:24–2:42 | Public Explorer and receipt | “A Railway agent completed this flow on October eighth. Its receipt root checks against Monad testnet. That run is historical; the actor later expired and grants were revoked.” |
-| 2:42–3:00 | Product, SDK, MCP and source | “Pact is open source. Reproduce the boundary with the Console, TypeScript or Python SDK, curl, MCP tools and the local demo upstream.” |
+| 0:00–0:16 | White opening; boundary lines draw around the authority question | Who authorizes an agent's actions? |
+| 0:16–0:34 | Moving team imagery and Pact product reveal | Pact lets agents work within owner-set limits. |
+| 0:34–0:52 | Kinetic CONNECT type and public developer docs | Connect an agent, endpoint, grant, policy, and key. |
+| 0:52–1:10 | Animated request and gateway flow | Permit an allowed GET; stop a forbidden method before forwarding. |
+| 1:10–1:28 | Moving grid of Agents, Endpoints, Grants, Policies, keys, and Activity | Each private gateway decision records a reason. |
+| 1:28–1:46 | Public Explorer interaction and recorded testnet receipt | Inspect the historical Monad testnet receipt and its verification result. |
+| 1:46–2:04 | Moving human-owner and agent composition | A grant identifies the owner and bounds authority. |
+| 2:04–2:22 | Moving public docs and pointer sequence | Register the agent, endpoint, rule, and scoped key. |
+| 2:22–2:42 | Moving system strip and product imagery | Link agent, grant, policy, approval, and receipt. |
+| 2:42–3:00 | Fast montage resolving to Pact lockup | Authority with an outcome. |
 
 ## Fresh hands-on recording path
 
