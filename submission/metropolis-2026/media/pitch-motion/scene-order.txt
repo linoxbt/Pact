@@ -1,0 +1,7 @@
+01  00:00–00:16  The authority question
+02  00:16–00:34  Pact reveal and live product
+07  00:34–00:52  Human owner and agent
+08  00:52–01:04  Connect an agent (first 12 seconds)
+04  01:04–01:22  Gateway enforcement
+06  01:22–01:40  Monad testnet receipt
+10  01:40–01:58  Pact lockup

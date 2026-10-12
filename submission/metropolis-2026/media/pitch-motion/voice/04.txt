@@ -1,0 +1,1 @@
+Developers connect an agent, register an endpoint, set a rule, and issue a scoped key. The protected upstream secret stays inside Pact.

@@ -1,0 +1,1 @@
+Pact is a programmable authority layer for autonomous agents. It lets an owner define a grant, a developer connect an agent, and a policy decide every request before execution.

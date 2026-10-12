@@ -1,0 +1,1 @@
+For onchain actions, Pact uses owner-specific grants on Monad testnet. This public receipt comes from a recorded October eighth run and can be checked against its chain trail.

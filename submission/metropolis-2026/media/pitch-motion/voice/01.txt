@@ -1,0 +1,1 @@
+An agent can call an API or move funds in seconds. But who authorized the action? What limits apply? And who is responsible for what it commits?

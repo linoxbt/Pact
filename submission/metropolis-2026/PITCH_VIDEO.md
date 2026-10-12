@@ -1,18 +1,18 @@
-# Pact pitch · 1:48
+# Pact pitch film · 1:58
 
-**File:** `Pact-Pitch-1m48.mp4`. This caption-led pitch uses six Brag chapters. Record the optional script below if a founder voice is wanted; the video does not impersonate a founder or use synthetic narration.
+**File:** [Pact-Pitch-1m58.mp4](Pact-Pitch-1m58.mp4)
+**Poster:** [Pact-Pitch-Poster.jpg](Pact-Pitch-Poster.jpg)
 
-| Time | Visual | Spoken pitch |
+This is the submission pitch video. It is a single narrated motion edit made with Brag/Hyperframes and FFmpeg. It introduces Lino as Pact's solo founder and engineer, states the agent-authority problem, explains Pact's enforcement flow, and closes with the reason for building it. The generated narrator is not represented as Lino's own voice. The onchain receipt is explicitly labeled as a recorded Monad testnet run.
+
+| Time | Visual | Pitch message |
 | --- | --- | --- |
-| 0:00–0:18 | Live product and problem | “AI agents can operate APIs and wallets. A key gives them power, but does not say who authorized the action or how much they can commit.” |
-| 0:18–0:36 | Pact product | “Pact is the authority layer between an agent and the system it wants to use. Owners define grants. Developers register operations. Ordered policies check every request before execution.” |
-| 0:36–0:54 | Monad authority | “On Monad testnet, owner-specific grants reserve exact action capacity, bound recipients and amounts, reject replay and require approval above a threshold.” |
-| 0:54–1:12 | Obligation path | “For a funded milestone, Pact links authority, signed terms, escrow, evidence, a named verifier decision and settlement.” |
-| 1:12–1:30 | Public proof | “A real Railway agent and model completed the recorded testnet exercise. The public receipt root checks against Monad. The test actor has since expired and its grants are revoked.” |
-| 1:30–1:48 | Call to action | “Start with one protected endpoint. Pact provides a Console, gateway, TypeScript and Python SDKs, MCP tools, docs and a local demo upstream. Explore the product and inspect the source.” |
+| 0:00–0:16 | Authority lines and kinetic question | Agents can act quickly; who authorized them and set their limits? |
+| 0:16–0:34 | Pact brand and real public product | Pact gives owners a grant and checks requests against policy. |
+| 0:34–0:52 | Human owner and agent composition | Lino is the solo builder; keys alone do not provide a clear chain of authority. |
+| 0:52–1:04 | Moving developer documentation | Connect an agent, endpoint, policy, and scoped key. |
+| 1:04–1:22 | Animated gateway flow | Allowed requests reach the service; denied requests stop before forwarding. |
+| 1:22–1:40 | Public Monad testnet Explorer | A recorded October 8 receipt demonstrates the public trail. |
+| 1:40–1:58 | Fast product mosaic and Pact lockup | Build useful agents while retaining human control and economic accountability. |
 
-- **Problem:** Agent access without bounded, attributable authority.
-- **Solution:** A gateway and onchain protocol enforcing owner grants and policy before execution.
-- **Proof:** Recorded Monad testnet transactions and public receipt 1.
-- **Scope:** HTTP policy and one funded milestone are implemented. Recurring liability valuation is a design direction, not a shipped adapter.
-**First users:** Agent developers protecting APIs and Monad teams building service, treasury or procurement agents. This is a target segment, not claimed traction.
+The exact voice script is in [media/pitch-motion/voice](media/pitch-motion/voice), and the edit order is in [scene-order.txt](media/pitch-motion/scene-order.txt). The film shows public product captures and historical testnet evidence, not a new authenticated Console session. Upload this MP4 to YouTube, Loom, or Vimeo, verify public playback, then paste that HTTPS video URL into the pitch field.

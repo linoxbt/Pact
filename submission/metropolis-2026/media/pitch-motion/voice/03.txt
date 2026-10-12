@@ -1,0 +1,1 @@
+Pact is built by Lino, a solo founder and engineer. The idea began with a simple gap: a wallet or API key gives an agent access, but leaves a business without a clear chain of authority.

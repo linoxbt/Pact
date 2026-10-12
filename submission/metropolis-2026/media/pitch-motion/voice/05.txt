@@ -1,0 +1,1 @@
+At the gateway, an allowed request reaches the service. A forbidden method or path stops before forwarding. The decision record shows the matched rule and reason.

@@ -1,0 +1,1 @@
+Pact is being built so agents can do useful work without losing human control or economic accountability. Start with one agent, one endpoint, and one clear boundary. Try Pact and inspect the open-source code.
