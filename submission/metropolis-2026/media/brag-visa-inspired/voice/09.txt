@@ -1,0 +1,1 @@
+The same system links agent, grant, policy, approval, and outcome. Activity records explain private gateway decisions. On Monad testnet, anchored receipts let others check the public part of that authority trail.

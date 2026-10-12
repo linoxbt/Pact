@@ -1,0 +1,1 @@
+The recorded Railway agent test completed this flow in October. That actor has since expired and its grants were revoked. Pact is the path from permission to decision to accountable outcome. Build with the SDKs, MCP tools, or Console.

@@ -1,0 +1,1 @@
+Developers can connect an agent, register an endpoint, define a policy, and issue a scoped key. The agent calls Pact's gateway. Pact checks the request first, then forwards only what the rule allows.

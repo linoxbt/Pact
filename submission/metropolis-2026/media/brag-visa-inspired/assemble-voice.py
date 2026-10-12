@@ -1,9 +1,9 @@
-"""Place the seven approved narration clips on the 124-second film timeline."""
+"""Place ten narration clips on the 180-second film timeline."""
 from pathlib import Path
 import wave
 
 HERE = Path(__file__).resolve().parent
-DURATIONS = [16, 18, 18, 18, 18, 18, 18]
+DURATIONS = [16, 18, 18, 18, 18, 18, 18, 18, 20, 18]
 RATE = 24000
 CHANNELS = 1
 WIDTH = 2
