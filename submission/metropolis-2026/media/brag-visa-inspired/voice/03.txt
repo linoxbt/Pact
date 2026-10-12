@@ -1,0 +1,1 @@
+Connect an agent to Pact. Register its endpoint, define its owner grant, order the policy rules, and issue a scoped key. The developer documentation gives TypeScript, Python, curl, and MCP examples for the same gateway.

@@ -1,0 +1,1 @@
+An agent can act. It can call an API, move value, and make a promise. But an access key cannot answer the question that matters: who authorized this action, and where does that authority end?

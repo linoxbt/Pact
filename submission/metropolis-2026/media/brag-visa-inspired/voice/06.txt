@@ -1,0 +1,1 @@
+For economic actions, an owner-specific Monad testnet grant limits the agent, token, recipient, and capacity. A funded milestone links terms, escrow, evidence, a named verifier verdict, and settlement. This public receipt checks against the chain.

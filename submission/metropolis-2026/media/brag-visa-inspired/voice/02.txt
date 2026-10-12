@@ -1,0 +1,1 @@
+Pact gives autonomous agents a clear boundary. A person or organization owns every grant. Developers register the services an agent may use. The agent receives a scoped Pact credential, while provider secrets stay protected.

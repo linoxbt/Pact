@@ -1,0 +1,1 @@
+Every request meets the boundary first. Pact checks the key, operation, grant, and ordered policy. An allowed GET reaches the protected upstream. A forbidden method is denied before forwarding. The upstream never receives it.

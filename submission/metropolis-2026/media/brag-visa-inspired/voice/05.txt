@@ -1,0 +1,1 @@
+The Console keeps agents, endpoints, grants, policies, keys, approvals, and activity together. Each decision records its matched rule, reason, request ID, outcome, and latency. Operators can see exactly why an action was allowed or stopped.

@@ -7,6 +7,7 @@
     "lint:video": "hyperframes lint brag-chapters/01"
   },
   "dependencies": {
+    "gsap": "^3.14.2",
     "hyperframes": "0.8.149",
     "pptxgenjs": "4.0.1"
   }

@@ -15,6 +15,7 @@ Prepared for the **Trust, Identity & AI Infrastructure** primary track. The dead
 | Project overview PDF | [Pact-Overview.pdf](Pact-Overview.pdf) | Two-page judge brief |
 | Presentation | [Pact-Pitch-Deck.pptx](Pact-Pitch-Deck.pptx), [PDF](Pact-Pitch-Deck.pdf) | Twelve editable slides plus PDF export |
 | Demo video, up to 3 minutes | [Pact-Demo-3min.mp4](Pact-Demo-3min.mp4), [script](DEMO_VIDEO.md) | 3:00 caption-led film; upload to a video host |
+| Reference-inspired brand film | [Pact-Brand-Film-2m04.mp4](media/brag-visa-inspired/Pact-Brand-Film-2m04.mp4), [poster](media/brag-visa-inspired/Pact-Brand-Film-Poster.jpg), [analysis](media/REFERENCE_VIDEO_ANALYSIS.md) | 2:04 narrated Brag film with product captures, motion, music, and touch cues; within the demo-video limit |
 | Pitch video, up to 2 minutes | [Pact-Pitch-1m48.mp4](Pact-Pitch-1m48.mp4), [script](PITCH_VIDEO.md) | 1:48 caption-led film; upload to a video host |
 | Combined film | [Pact-Complete-Submission-Film.mp4](Pact-Complete-Submission-Film.mp4) | 4:48 archive copy; not for either portal duration-limited field |
 | Optional promo clip, up to 30 seconds | [PITCH_VIDEO.md](PITCH_VIDEO.md) | Optional; upload only if made |

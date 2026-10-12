@@ -1,0 +1,1 @@
+Pact gives agents room to act within boundaries set by their owners. Connect an agent, enforce every request, and follow authority through to a verifiable testnet receipt.
