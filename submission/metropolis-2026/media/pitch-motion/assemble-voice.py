@@ -1,9 +1,9 @@
-"""Place the seven pitch narration clips on a 118-second timeline."""
+"""Place seven original pitch-deck narration clips on a 112-second timeline."""
 from pathlib import Path
 import wave
 
 HERE = Path(__file__).resolve().parent
-DURATIONS = [16, 18, 18, 12, 18, 18, 18]
+DURATIONS = [16, 16, 16, 16, 16, 16, 16]
 RATE = 24000
 timeline = bytearray(sum(DURATIONS) * RATE * 2)
 start = 0

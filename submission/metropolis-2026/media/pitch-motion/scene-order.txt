@@ -1,7 +1,7 @@
-01  00:00–00:16  The authority question
-02  00:16–00:34  Pact reveal and live product
-07  00:34–00:52  Human owner and agent
-08  00:52–01:04  Connect an agent (first 12 seconds)
-04  01:04–01:22  Gateway enforcement
-06  01:22–01:40  Monad testnet receipt
-10  01:40–01:58  Pact lockup
+01  00:00–00:16  Product thesis: authority for autonomous agents
+02  00:16–00:32  Lino, solo founder and engineer
+03  00:32–00:48  Access without accountability
+04  00:48–01:04  Grant, policy, gateway, and receipt
+05  01:04–01:20  Commitment-aware authority example
+06  01:20–01:36  Implemented Monad testnet proof
+07  01:36–01:52  First users, motivation, and call to action

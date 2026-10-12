@@ -1,1 +1,1 @@
-Developers connect an agent, register an endpoint, set a rule, and issue a scoped key. The protected upstream secret stays inside Pact.
+Pact links an owner grant, ordered policy, scoped integration key, and gateway. The gateway forwards allowed calls, blocks denied calls before the upstream, and records the reason.

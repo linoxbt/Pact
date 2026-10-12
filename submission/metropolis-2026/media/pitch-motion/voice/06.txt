@@ -1,1 +1,1 @@
-For onchain actions, Pact uses owner-specific grants on Monad testnet. This public receipt comes from a recorded October eighth run and can be checked against its chain trail.
+On Monad testnet, Pact enforces exact capacity for transfers and one funded milestone. A recorded agent run produced a public receipt that can be checked against the chain.

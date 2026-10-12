@@ -1,5 +1,5 @@
-# Pact founder pitch film
+# Pact original motion pitch deck
 
-The canonical film is [`../../Pact-Pitch-1m58.mp4`](../../Pact-Pitch-1m58.mp4). It is a 1:58 narrated motion edit assembled from the Pact demo's rendered Brag scenes, with a pitch-specific voice script, music, and timed effects. The script introduces solo builder Lino, defines the problem, explains the gateway and Monad testnet proof, and closes with why Pact is being built. It does not claim a fresh authenticated Console run.
+The canonical film is [`../../Pact-Pitch-1m52.mp4`](../../Pact-Pitch-1m52.mp4). It is a seven-scene, 1:52 animated pitch deck. Every scene was authored for the pitch in `build-deck.mjs`; no chapter or rendered footage from the three-minute demo is used. The first two scenes introduce Pact and solo builder Lino, then the film covers the problem, solution, commitment-aware distinction, recorded Monad testnet proof, first users, and motivation.
 
-`assemble-voice.py` creates the 118-second narration timeline from the seven clips in `voice/`. `scene-order.txt` records the visual edit. The source motion compositions are in `../brag-visa-inspired/chapters/`.
+Run `node build-deck.mjs` to regenerate the seven Hyperframes compositions under `chapters/`. Validate each with `../../../node_modules/.bin/hyperframes check`, render to `chapter.mp4`, and concatenate in order. `assemble-voice.py` places the locally generated voice clips on the 112-second timeline. The final FFmpeg mix adds a licensed Brag music bed and restrained sound effects. The pitch uses its own text and motion graphics, with two real public Pact captures in the proof scene. It does not imply a new authenticated Console run or a shipped recurring-contract adapter.

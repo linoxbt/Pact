@@ -2,3 +2,6 @@ narration-timeline.wav
 silent-pitch.mp4
 scene08-trim.mp4
 concat.txt
+chapters/*/assets/
+chapters/*/chapter.mp4
+assets/

@@ -1,1 +1,1 @@
-An agent can call an API or move funds in seconds. But who authorized the action? What limits apply? And who is responsible for what it commits?
+Pact is programmable authority for autonomous agents. When an agent acts in the real world, who authorized it, what may it do, and what has it committed?

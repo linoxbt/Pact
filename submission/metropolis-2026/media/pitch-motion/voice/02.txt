@@ -1,1 +1,1 @@
-Pact is a programmable authority layer for autonomous agents. It lets an owner define a grant, a developer connect an agent, and a policy decide every request before execution.
+Lino is building Pact as a solo founder and engineer. Agent builders can hand over a wallet or API key, but access alone cannot show who approved an action or who carries its liability.

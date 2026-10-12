@@ -1,1 +1,1 @@
-Pact is built by Lino, a solo founder and engineer. The idea began with a simple gap: a wallet or API key gives an agent access, but leaves a business without a clear chain of authority.
+The problem grows as agents cross tools. A prompt can suggest limits, but cannot enforce a recipient, a spending cap, or a forbidden endpoint at the execution boundary.
